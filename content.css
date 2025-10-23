@@ -4,7 +4,7 @@
     top: 20px;
     right: 20px;
     width: 320px;
-    z-index: 2147483647;
+    z-index: 2147483647; /* Valor máximo para ficar por cima de tudo */
     background-color: white;
     border-radius: 10px;
     box-shadow: 0 5px 25px rgba(0,0,0,0.2);
@@ -86,8 +86,8 @@
     background-color: #006a4c;
 }
 
+/* Estilo específico para o textarea do relatório (View 2) */
 #crx-report-textarea {
     height: 250px;
     background-color: #f8f8f8;
 }
-

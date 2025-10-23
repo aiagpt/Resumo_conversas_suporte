@@ -2,6 +2,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const toggleSwitch = document.getElementById('toggle-switch');
     const statusText = document.getElementById('status-text');
 
+    // --- Lógica do Toggle (Existente) ---
+
     // Carrega o estado salvo quando o popup abre
     chrome.storage.sync.get(['extensionEnabled'], (result) => {
         toggleSwitch.checked = !!result.extensionEnabled;
@@ -34,5 +36,8 @@ document.addEventListener('DOMContentLoaded', () => {
             statusText.style.color = '#555';
         }
     }
+
+    // --- Lógica da API Key (Removida) ---
+    // Não precisamos mais salvar ou carregar a chave pelo popup.
 });
 
