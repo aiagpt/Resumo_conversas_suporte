@@ -1,63 +1,10 @@
 // --- Estado da Extensão ---
 let isExtensionEnabled = false;
+let pageObserver = null; // Instância do MutationObserver
 
-// Função para iniciar ou parar de observar a página
-function setupObserver(enable) {
-    if (enable) {
-        // Inicia o observer se ainda não estiver rodando
-        if (!window.pageObserver) {
-            console.log('[Gerador de Resumo] Ativado. Procurando botão...');
-            const observer = new MutationObserver(findTriggerButton);
-            observer.observe(document.body, { childList: true, subtree: true });
-            window.pageObserver = observer;
-            findTriggerButton(); // Procura imediatamente também
-        }
-    } else {
-        // Para e remove o observer
-        if (window.pageObserver) {
-            console.log('[Gerador de Resumo] Desativado.');
-            window.pageObserver.disconnect();
-            delete window.pageObserver;
-        }
-    }
-}
-
-// --- Lógica para encontrar o botão ---
-function findTriggerButton() {
-    // Procura por todos os spans com a classe 'v-btn__content'
-    const spans = document.querySelectorAll('span.v-btn__content');
-    
-    spans.forEach(span => {
-        // Verifica se o texto dentro do span é "Finalizar"
-        if (span.textContent.trim() === 'Finalizar') {
-            
-            // Encontra o elemento <button> pai mais próximo
-            const button = span.closest('button');
-            
-            // Verifica se encontrou um botão e se ele já não tem o nosso "ouvinte"
-            if (button && !button.hasAttribute('data-crx-listener')) {
-                console.log('[Gerador de Resumo] Botão "Finalizar" encontrado!');
-                // Marca o botão para não adicionar o "ouvinte" de novo
-                button.setAttribute('data-crx-listener', 'true');
-                // Adiciona a ação de clique
-                button.addEventListener('click', onTriggerButtonClick);
-            }
-        }
-    });
-}
-
-// --- Lógica para construir a interface ---
-function onTriggerButtonClick(event) {
-    // Se a extensão não estiver ativa, não faz nada.
-    if (!isExtensionEnabled) return;
-
-    // Remove qualquer modal antigo antes de criar um novo
-    const existingModal = document.getElementById('crx-modal-container');
-    if (existingModal) {
-        existingModal.remove();
-    }
-
-    // --- Constrói a UI do Modal diretamente no DOM ---
+// --- Lógica de UI (Genérica - Usada por ambos) ---
+// (Definida primeiro para estar disponível para os handlers)
+function createModalUI() {
     const modalContainer = document.createElement('div');
     modalContainer.id = 'crx-modal-container';
 
@@ -67,199 +14,32 @@ function onTriggerButtonClick(event) {
     closeButton.onclick = () => modalContainer.remove();
     modalContainer.appendChild(closeButton);
 
-    // View 1: Gerar Resumo
     const view1 = createView1();
     modalContainer.appendChild(view1);
 
-    // View 2: Relatório (inicialmente escondida)
     const view2 = createView2();
     view2.style.display = 'none';
     modalContainer.appendChild(view2);
 
-    // --- Lógica para trocar de tela e copiar ---
-    const generateButton = view1.querySelector('#crx-generate-button');
     const copyButton = view2.querySelector('#crx-copy-button');
-    const obsTextarea = view1.querySelector('#crx-obs-textarea');
     const reportTextarea = view2.querySelector('#crx-report-textarea');
-
-    generateButton.addEventListener('click', () => {
-        
-        // --- INÍCIO DA LÓGICA DE LOADING ---
-        generateButton.textContent = 'Processando... ⌛';
-        generateButton.disabled = true;
-        obsTextarea.style.color = '#000'; // Resetar cor de erro
-        // --- FIM DA LÓGICA DE LOADING ---
-
-        // 1. Captura os dados do popup do site (Título, Grupo, etc.)
-        const ticketInfo = extractTicketDataFromPopup();
-        
-        // 2. Captura o histórico da conversa real (da página principal)
-        const chatLog = extractChatLog();
-        
-        // 3. Captura observações manuais
-        const observations = obsTextarea.value;
-        
-        // 4. Combina tudo para enviar à IA
-        let fullConversation = "--- Informações do Ticket (do popup) ---\n" +
-                               ticketInfo +
-                               "\n\n--- Histórico da Conversa (do chat) ---\n" +
-                               chatLog;
-
-        if (observations.trim() !== '') {
-            fullConversation += `\n\n--- Observações Adicionais do Técnico ---\n${observations}`;
-        }
-
-
-        // Envia para o background.js para chamar a API
-        chrome.runtime.sendMessage(
-            { 
-                command: 'summarizeConversation', 
-                conversation: fullConversation
-            }, 
-            (response) => {
-                
-                // --- RESET DO ESTADO DE LOADING ---
-                generateButton.textContent = 'Gerar Resumo da Conversa';
-                generateButton.disabled = false;
-                // --- FIM DO RESET ---
-
-                if (response && response.summary) {
-                    // Preenche o relatório com o resumo da IA
-                    const originalReport = extractReportBaseData(); // Pega os dados base novamente
-                    reportTextarea.value = `${originalReport}\n\nResumo da IA:\n${response.summary}`;
-                    
-                    // Adiciona observações se existirem
-                    if (observations.trim() !== '') {
-                        reportTextarea.value += `\n\nObservações Adicionais:\n${observations}`;
-                    }
-
-                    // Muda para a tela de relatório
-                    view1.style.display = 'none';
-                    view2.style.display = 'flex';
-                } else if (response && response.error) {
-                    // Mostra o erro no campo de observação
-                    console.error('[ContentScript] Erro recebido do background:', response.error);
-                    obsTextarea.value = `Erro ao gerar resumo: ${response.error}`;
-                    obsTextarea.style.color = 'red';
-                } else {
-                    // Erro inesperado
-                    console.error('[ContentScript] Resposta inválida do background:', response);
-                    obsTextarea.value = 'Erro: Resposta inválida do script de background.';
-                    obsTextarea.style.color = 'red';
-                }
-            }
-        );
-    });
 
     copyButton.addEventListener('click', () => {
         reportTextarea.select();
-        document.execCommand('copy');
-        copyButton.textContent = 'Copiado!';
+        try {
+            document.execCommand('copy');
+            copyButton.textContent = 'Copiado!';
+        } catch (err) {
+            console.error('[Gerador de Resumo] Falha ao copiar:', err);
+            copyButton.textContent = 'Erro ao copiar';
+        }
         setTimeout(() => {
             copyButton.innerHTML = '📋 Copiar';
         }, 2000);
     });
 
-    // Injeta o modal dentro do overlay do site
-    setTimeout(() => {
-        const overlay = document.querySelector('div.v-overlay__content');
-        if (overlay) {
-            overlay.appendChild(modalContainer);
-        } else {
-            // Fallback: se não achar o overlay, injeta no body
-            document.body.appendChild(modalContainer);
-        }
-    }, 0); // Timeout 0 espera o overlay ser criado pelo script do site
+    return { modalContainer, view1, view2, reportTextarea };
 }
-
-// Função auxiliar para pegar o texto de um seletor
-function getText(selector) {
-    // Procura dentro do overlay, para garantir que estamos pegando os dados do popup
-    const overlay = document.querySelector('div.v-overlay__content');
-    const context = overlay || document; // Usa o overlay se existir, senão o documento todo
-    
-    const element = context.querySelector(selector);
-    // Usa .textContent para pegar texto de elementos aninhados
-    return element ? element.textContent.trim() : '';
-}
-
-// Função para extrair os dados base do popup do site
-function extractReportBaseData() {
-    const today = new Date().toLocaleDateString('pt-BR');
-    
-    // Tenta pegar o nome do cliente da UI do chat (se disponível)
-    let clientName = document.querySelector('#chatlist .v-list-item:first-child .text-primary')?.textContent.trim() || '[Nome do Cliente]';
-    
-    // Pega os dados do overlay
-    const ticketId = getText('.v-card-text .v-row:nth-child(1) p a');
-    const ticketTitle = getText('.v-card-text .v-row:nth-child(2) p span');
-
-    return `Relatório de Atendimento - ${today}\n` +
-           `Cliente: ${clientName}\n` +
-           `Chamado: ${ticketId}\n` +
-           `Título: ${ticketTitle}`;
-}
-
-// --- NOVA FUNÇÃO ---
-// Extrai o histórico de chat real da página principal
-function extractChatLog() {
-    // Procura o chat log na página principal (NÃO no overlay)
-    const chatList = document.querySelector('#chatlist');
-    if (!chatList) {
-        console.warn('[ContentScript] Não foi possível encontrar a lista de chat (#chatlist).');
-        return "A conversa não foi encontrada.";
-    }
-
-    let chatText = "Início da Conversa:\n";
-    // Pega todas as mensagens
-    const messages = chatList.querySelectorAll('.v-list-item');
-
-    messages.forEach(msg => {
-        // Tenta encontrar o nome/número do remetente
-        const senderEl = msg.querySelector('.v-list-item-title .text-primary, .v-list-item-title .text-red'); // Adiciona 'text-red' se o técnico for vermelho
-        // Tenta encontrar o timestamp
-        const timeEl = msg.querySelector('.v-list-item-title .text-grey');
-        // Tenta encontrar o texto da mensagem
-        const messageEl = msg.querySelector('.v-list-item-subtitle > .py-1');
-
-        if (senderEl && messageEl && timeEl) {
-            const sender = senderEl.textContent.trim();
-            const time = timeEl.textContent.trim();
-            
-            // Limpa o HTML da mensagem (para lidar com <br> e outros)
-            const clone = messageEl.cloneNode(true);
-            clone.querySelectorAll('br').forEach(br => br.replaceWith('\n')); // Substitui <br> por quebra de linha
-            const message = clone.textContent.trim();
-
-            chatText += `[${time}] ${sender}: ${message}\n`;
-        }
-    });
-
-    chatText += "Fim da Conversa.\n";
-    return chatText;
-}
-
-
-// --- FUNÇÃO MODIFICADA ---
-// Extrai APENAS os dados do popup "Encerramento do atendimento"
-function extractTicketDataFromPopup() {
-    const ticketTitle = getText('.v-card-text .v-row:nth-child(2) p span');
-    const ticketGroup = getText('.v-card-text .v-row:nth-child(4) p span');
-    
-    // Pega a descrição do popup (que é o PRIMEIRO item da conversa)
-    const ticketDescEl = document.querySelector('#ticket_description_modal');
-    let descriptionText = '';
-    if (ticketDescEl) {
-        const clone = ticketDescEl.cloneNode(true);
-        clone.querySelectorAll('br').forEach(br => br.replaceWith('\n'));
-        descriptionText = clone.textContent.trim();
-    }
-
-    return `Título do Chamado: ${ticketTitle}\n` +
-           `Grupo de Atendimento: ${ticketGroup}\n` +
-           `Descrição Inicial (do popup): ${descriptionText}`;
-}
-
 
 function createView1() {
     const view = document.createElement('div');
@@ -276,7 +56,6 @@ function createView1() {
 function createView2() {
     const view = document.createElement('div');
     view.className = 'crx-view';
-    // O conteúdo do textarea será preenchido dinamicamente
     view.innerHTML = `
         <h2>Relatório Gerado</h2>
         <textarea id="crx-report-textarea" readonly></textarea>
@@ -284,20 +63,546 @@ function createView2() {
     `;
     return view;
 }
+// --- Fim da Lógica de UI (Genérica) ---
 
 
-// --- Comunicação com o popup ---
-chrome.runtime.onMessage.addListener((request) => {
+// --- DEFINIÇÃO DOS HANDLERS ---
+
+/**
+ * Manipulador para a estrutura original (VerdanaDesk com botão "Finalizar")
+ * Lógica original mantida, que espera o overlay do Vuetify.
+ */
+const VerdanaDeskHandler = {
+
+    siteIdentifier: "VerdanaDesk_Finalizar",
+
+    getText: function(selector) {
+        // Procura dentro do overlay, para garantir que estamos pegando os dados do popup
+        const overlay = document.querySelector('div.v-overlay__content');
+        const context = overlay || document; // Usa o overlay se existir, senão o documento todo
+        
+        const element = context.querySelector(selector);
+        // Usa .textContent para pegar texto de elementos aninhados
+        return element ? element.textContent.trim() : '';
+    },
+
+    findTriggerButton: function() {
+        const spans = document.querySelectorAll('span.v-btn__content');
+        spans.forEach(span => {
+            if (span.textContent.trim() === 'Finalizar') {
+                const button = span.closest('button');
+                if (button && !button.hasAttribute('data-crx-listener')) {
+                    console.log('[Gerador de Resumo] Botão "Finalizar" (Verdana) encontrado!');
+                    button.setAttribute('data-crx-listener', 'true');
+                    // NÃO usa captura, espera o overlay
+                    button.addEventListener('click', VerdanaDeskHandler.onTriggerButtonClick);
+                }
+            }
+        });
+    },
+
+    onTriggerButtonClick: function(event) {
+        if (!isExtensionEnabled) return;
+        
+        // NÃO impede o evento padrão - deixa o overlay do VerdanaDesk aparecer.
+        console.log('[Gerador de Resumo] Clique no "Finalizar" (Verdana) detetado. A aguardar overlay...');
+
+        const existingModal = document.getElementById('crx-modal-container');
+        if (existingModal) existingModal.remove();
+
+        const { modalContainer, view1, view2, reportTextarea } = createModalUI();
+        const generateButton = view1.querySelector('#crx-generate-button');
+        const obsTextarea = view1.querySelector('#crx-obs-textarea');
+
+        // *** CORREÇÃO CRÍTICA: Impede que o clique neste botão feche o overlay pai ***
+        generateButton.addEventListener('click', (e_gen) => {
+            e_gen.stopPropagation(); // Impede que o clique "borbulhe" para o overlay
+
+            generateButton.textContent = 'Processando... ⌛';
+            generateButton.disabled = true;
+            obsTextarea.style.color = '#000';
+
+            // Extração de dados acontece AQUI, depois que o overlay está visível
+            const ticketInfo = VerdanaDeskHandler.extractTicketDataFromPopup();
+            const chatLog = VerdanaDeskHandler.extractChatLog();
+            const observations = obsTextarea.value;
+            
+            let fullConversation = "--- Informações do Ticket (do popup) ---\n" +
+                                   ticketInfo +
+                                   "\n\n--- Histórico da Conversa (do chat) ---\n" +
+                                   chatLog;
+
+            if (observations.trim() !== '') {
+                fullConversation += `\n\n--- Observações Adicionais do Técnico ---\n${observations}`;
+            }
+
+            chrome.runtime.sendMessage(
+                { command: 'summarizeConversation', conversation: fullConversation },
+                (response) => {
+                    if (chrome.runtime.lastError) {
+                        console.error('[ContentScript] Contexto invalidado (Verdana):', chrome.runtime.lastError.message);
+                        document.getElementById('crx-modal-container')?.remove();
+                        return;
+                    }
+                    
+                    const currentGenerateButton = document.getElementById('crx-generate-button');
+                    if (currentGenerateButton) {
+                         currentGenerateButton.textContent = 'Gerar Resumo da Conversa';
+                         currentGenerateButton.disabled = false;
+                    }
+
+                    if (response && response.summary) {
+                        const originalReport = VerdanaDeskHandler.extractReportBaseData(); 
+                        reportTextarea.value = `${originalReport}\n\nResumo da IA:\n${response.summary}`;
+                        if (observations.trim() !== '') {
+                            reportTextarea.value += `\n\nObservações Adicionais:\n${observations}`;
+                        }
+                        view1.style.display = 'none';
+                        view2.style.display = 'flex';
+                    } else if (response && response.error) {
+                        console.error('[ContentScript] Erro (Verdana):', response.error);
+                        obsTextarea.value = `Erro ao gerar resumo: ${response.error}`;
+                        obsTextarea.style.color = 'red';
+                    } else {
+                        console.error('[ContentScript] Resposta inválida (Verdana):', response);
+                        obsTextarea.value = 'Erro: Resposta inválida do script de background.';
+                        obsTextarea.style.color = 'red';
+                    }
+                }
+            );
+        });
+
+        // Lógica de injeção original do VerdanaDesk (espera o overlay aparecer)
+        setTimeout(() => {
+            const overlay = document.querySelector('div.v-overlay__content');
+            if (overlay) {
+                overlay.appendChild(modalContainer);
+                console.log('[Gerador de Resumo] Modal injetado no overlay (Verdana).');
+            } else {
+                document.body.appendChild(modalContainer);
+                console.log('[Gerador de Resumo] Modal injetado no body (Verdana fallback).');
+            }
+        }, 0); // Timeout 0 espera o overlay ser criado pelo script do site
+    },
+
+    extractChatLog: function() {
+        const chatList = document.querySelector('#chatlist');
+        if (!chatList) {
+            console.warn('[ContentScript] Não foi possível encontrar #chatlist (Verdana).');
+            return "A conversa não foi encontrada.";
+        }
+        let chatText = "Início da Conversa:\n";
+        const messages = chatList.querySelectorAll('.v-list-item');
+        messages.forEach(msg => {
+            const senderEl = msg.querySelector('.v-list-item-title .text-primary, .v-list-item-title .text-red');
+            const timeEl = msg.querySelector('.v-list-item-title .text-grey');
+            const messageEl = msg.querySelector('.v-list-item-subtitle > .py-1');
+            if (senderEl && messageEl && timeEl) {
+                const sender = senderEl.textContent.trim();
+                const time = timeEl.textContent.trim();
+                const clone = messageEl.cloneNode(true);
+                clone.querySelectorAll('br').forEach(br => br.replaceWith('\n'));
+                const message = clone.textContent.trim();
+                chatText += `[${time}] ${sender}: ${message}\n`;
+            }
+        });
+        chatText += "Fim da Conversa.\n";
+        return chatText;
+    },
+
+    extractTicketDataFromPopup: function() {
+        const ticketTitle = VerdanaDeskHandler.getText('.v-card-text .v-row:nth-child(2) p span');
+        const ticketGroup = VerdanaDeskHandler.getText('.v-card-text .v-row:nth-child(4) p span');
+        const ticketDescEl = document.querySelector('#ticket_description_modal');
+        let descriptionText = '';
+        if (ticketDescEl) {
+            const clone = ticketDescEl.cloneNode(true);
+            clone.querySelectorAll('br').forEach(br => br.replaceWith('\n'));
+            descriptionText = clone.textContent.trim();
+        }
+        return `Título do Chamado: ${ticketTitle}\n` +
+               `Grupo de Atendimento: ${ticketGroup}\n` +
+               `Descrição Inicial (do popup): ${descriptionText}`;
+    },
+
+    extractReportBaseData: function() {
+        const today = new Date().toLocaleDateString('pt-BR');
+        let clientName = document.querySelector('#chatlist .v-list-item:first-child .text-primary')?.textContent.trim() || '[Nome do Cliente]';
+        const ticketId = VerdanaDeskHandler.getText('.v-card-text .v-row:nth-child(1) p a');
+        const ticketTitle = VerdanaDeskHandler.getText('.v-card-text .v-row:nth-child(2) p span');
+        return `Relatório de Atendimento - ${today}\n` +
+               `Cliente: ${clientName}\n` +
+               `Chamado: ${ticketId}\n` +
+               `Título: ${ticketTitle}`;
+    }
+};
+
+/**
+ * Manipulador para a estrutura GLPI (VerdanaDesk com botão "Solução")
+ * Lógica nova, que impede o clique e injeta no body
+ */
+const GlpiHandler = {
+    siteIdentifier: "GLPI_Solucao",
+
+    getTextSafe: function(selector, context = document) {
+        const element = context.querySelector(selector);
+        return element ? element.textContent.replace(/\s+/g, ' ').trim() : '';
+    },
+
+    findTriggerButton: function() {
+        const buttons = document.querySelectorAll('button.action-solution span');
+        buttons.forEach(span => {
+            if (span.textContent.trim() === 'Solução') {
+                const button = span.closest('button');
+                if (button && !button.hasAttribute('data-crx-listener')) {
+                    console.log('[Gerador de Resumo] Botão "Solução" (GLPI) encontrado!');
+                    button.setAttribute('data-crx-listener', 'true');
+                    // Usa captura (true) para ser acionado ANTES do script da página
+                    button.addEventListener('click', GlpiHandler.onTriggerButtonClick, true);
+                }
+            }
+        });
+    },
+
+    onTriggerButtonClick: function(event) {
+        if (!isExtensionEnabled) {
+            console.log('[Gerador de Resumo] Extensão desativada, ignorando clique (GLPI).');
+            return;
+        }
+        
+        // Impede que o clique original da página (abrir o colapso) seja executado
+        event.stopPropagation();
+        event.preventDefault();
+
+        console.log('[Gerador de Resumo] Clique no "Solução" (GLPI) detetado e impedido.');
+
+        // Coleta os dados AGORA, pois a página não vai mudar
+        const baseData = GlpiHandler.extractReportBaseData();
+        const ticketData = GlpiHandler.extractTicketData();
+        const chatLog = GlpiHandler.extractChatLog();
+
+        const existingModal = document.getElementById('crx-modal-container');
+        if (existingModal) existingModal.remove();
+
+        const { modalContainer, view1, view2, reportTextarea } = createModalUI();
+        const generateButton = view1.querySelector('#crx-generate-button');
+        const obsTextarea = view1.querySelector('#crx-obs-textarea');
+
+        generateButton.addEventListener('click', () => {
+            generateButton.textContent = 'Processando... ⌛';
+            generateButton.disabled = true;
+            obsTextarea.style.color = '#000';
+
+            const observations = obsTextarea.value;
+            
+            let fullConversation = "--- Informações do Ticket ---\n" +
+                                   ticketData + // Usa dados já coletados
+                                   "\n\n--- Histórico da Conversa ---\n" +
+                                   chatLog; // Usa dados já coletados
+
+            if (observations.trim() !== '') {
+                fullConversation += `\n\n--- Observações Adicionais do Técnico ---\n${observations}`;
+            }
+
+            chrome.runtime.sendMessage(
+                { command: 'summarizeConversation', conversation: fullConversation },
+                (response) => {
+                    if (chrome.runtime.lastError) {
+                        console.error('[ContentScript] Erro (GLPI):', chrome.runtime.lastError.message);
+                        return;
+                    }
+                    
+                    const currentGenerateButton = document.getElementById('crx-generate-button');
+                    if (currentGenerateButton) {
+                        currentGenerateButton.textContent = 'Gerar Resumo da Conversa';
+                        currentGenerateButton.disabled = false;
+                    }
+
+                    if (response && response.summary) {
+                        reportTextarea.value = `${baseData}\n\nResumo da IA:\n${response.summary}`; // Usa baseData já coletado
+                        if (observations.trim() !== '') {
+                            reportTextarea.value += `\n\nObservações Adicionais:\n${observations}`;
+                        }
+                        view1.style.display = 'none';
+                        view2.style.display = 'flex';
+                    } else if (response && response.error) {
+                        console.error('[ContentScript] Erro (GLPI):', response.error);
+                        obsTextarea.value = `Erro ao gerar resumo: ${response.error}`;
+                        obsTextarea.style.color = 'red';
+                    } else {
+                        console.error('[ContentScript] Resposta inválida (GLPI):', response);
+                        obsTextarea.value = 'Erro: Resposta inválida do script de background.';
+                        obsTextarea.style.color = 'red';
+                    }
+                }
+            );
+        });
+
+        // Injeta o modal no body
+        setTimeout(() => {
+            document.body.appendChild(modalContainer);
+            console.log('[Gerador de Resumo] Modal injetado no body (GLPI).');
+            modalContainer.classList.add('glpi-modal-override');
+        }, 100); // Pequeno atraso para garantir
+    },
+
+    extractChatLog: function() {
+        const timeline = document.querySelector('.itil-timeline');
+        if (!timeline) {
+            console.warn('[ContentScript GLPI] Container da timeline (.itil-timeline) não encontrado.');
+            return "Histórico da conversa não encontrado.";
+        }
+
+        let chatText = "";
+        let descriptionAdded = false;
+        const items = timeline.querySelectorAll(':scope > .timeline-item'); 
+
+        items.forEach(item => {
+            const isFollowup = item.classList.contains('ITILFollowup');
+            const isDescription = item.classList.contains('ITILContent');
+
+            if (!isFollowup && !isDescription) {
+                return; 
+            }
+
+            const headerElement = item.querySelector('.timeline-header');
+            const contentElement = item.querySelector('.card-body .rich_text_container, .card-body .content');
+
+            if (headerElement && contentElement) {
+                let headerText = headerElement.textContent.replace(/\s+/g, ' ').trim();
+                const cloneContent = contentElement.cloneNode(true);
+                cloneContent.querySelectorAll('br').forEach(br => br.replaceWith('\n'));
+                cloneContent.querySelectorAll('button, a.btn').forEach(btn => btn.remove());
+                let content = cloneContent.textContent.replace(/\s+/g, ' ').trim();
+                
+                if (!content && cloneContent.innerHTML.includes('<img')) {
+                    content = '[Imagem anexada]';
+                }
+
+                const match = headerText.match(/(?:Criado em:|Por)\s*(.*?)\s*(?:em|at)\s*(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}|Ontem|Hoje)/i);
+                let author = headerText; 
+                let time = '';
+                if (match && match.length >= 3) {
+                    author = match[1].trim().replace(/^por\s+/i, ''); 
+                    time = match[2].trim();
+                } else {
+                    const simpleMatch = headerText.match(/(.*?)\s+(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}|Ontem|Hoje)/i);
+                     if (simpleMatch && simpleMatch.length >= 3) {
+                         author = simpleMatch[1].trim();
+                         time = simpleMatch[2].trim();
+                     }
+                }
+
+                if (isDescription && !descriptionAdded) {
+                    chatText += `Descrição Inicial (${time} por ${author}):\n${content}\n---\n`;
+                    descriptionAdded = true;
+                } else if (isFollowup) {
+                    chatText += `[${time || 'Tempo não encontrado'}] ${author}:\n${content}\n---\n`;
+                }
+            }
+        });
+
+        if (chatText === "") {
+             console.warn('[ContentScript GLPI] Nenhum item de descrição ou acompanhamento encontrado na timeline.');
+             chatText = "Nenhuma descrição ou acompanhamento encontrado.\n";
+        } else if (!descriptionAdded) {
+            const initialDescription = GlpiHandler.getTextSafe('#tab_principale .card-text .content, #tab_Item_Ticket_1 .card-text .content');
+            chatText = `Descrição Inicial: ${initialDescription || '[Não encontrada]'}\n---\n` + chatText;
+        }
+
+        chatText += "Fim da Conversa.\n";
+        return chatText;
+    },
+
+    extractTicketData: function() {
+        const headerTitleElement = document.querySelector('h3.navigationheader-title');
+        let ticketTitle = '[Título não encontrado]';
+        let ticketId = '[ID não encontrado]';
+
+        if (headerTitleElement) {
+            const fullTitle = headerTitleElement.textContent.replace(/\s+/g, ' ').trim();
+            const matchId = fullTitle.match(/\(#(\d+)\)/);
+            if (matchId && matchId[1]) {
+                ticketId = matchId[1];
+                ticketTitle = fullTitle.replace(/\(#\d+\)\s*-\s*/, '').trim();
+            } else {
+                ticketTitle = fullTitle; 
+            }
+        }
+
+        let ticketGroup = '[Grupo não encontrado]';
+        const labels = document.querySelectorAll('label, th, dt, .glpi-label');
+        labels.forEach(label => {
+            if (label.textContent.trim().includes('Grupo')) {
+                const container = label.closest('div.row, div.mb-3, tr, dl > div'); 
+                if (container) {
+                    // *** CORREÇÃO DE SINTAXE (:)not([class*="..."]) ***
+                    const valueElement = container.querySelector('span:not(.badge), div:not(.glpi-label):not([class*="col-md-"]), td, dd'); 
+                     if (valueElement && valueElement.textContent.trim()) {
+                         ticketGroup = valueElement.textContent.replace(/\s+/g, ' ').trim();
+                     }
+                }
+            }
+        });
+
+        const initialDescriptionElement = document.querySelector('#tab_principale .card-text .content, #tab_Item_Ticket_1 .card-text .content');
+        let initialDescription = '[Descrição não encontrada]';
+         if (initialDescriptionElement) {
+            const clone = initialDescriptionElement.cloneNode(true);
+            clone.querySelectorAll('br').forEach(br => br.replaceWith('\n'));
+            initialDescription = clone.textContent.replace(/\s+/g, ' ').trim();
+        }
+
+        return `Título do Chamado: ${ticketTitle}\n` +
+               `Grupo de Atendimento: ${ticketGroup}\n` +
+               `Descrição Inicial: ${initialDescription}`;
+    },
+
+    extractReportBaseData: function() {
+        const today = new Date().toLocaleDateString('pt-BR');
+        let clientName = '[Requerente não encontrado]';
+        const actorLabels = document.querySelectorAll('label, th, dt, .glpi-label');
+        actorLabels.forEach(label => {
+            if (label.textContent.trim().toLowerCase() === 'requerente') {
+                const container = label.closest('div.row, div.mb-3, tr, dl > div');
+                if (container) {
+                    // *** CORREÇÃO DE SINTAXE (:)not([class*="..."]) ***
+                    const valueElement = container.querySelector('a[href*="user.form.php"], span:not(.badge), div:not(.glpi-label):not([class*="col-md-"]), td, dd');
+                    if (valueElement && valueElement.textContent.trim()) {
+                        clientName = valueElement.textContent.replace(/\s+/g, ' ').trim();
+                    }
+                }
+            }
+        });
+
+        const headerTitleElement = document.querySelector('h3.navigationheader-title');
+        let ticketTitle = '[Título não encontrado]';
+        let ticketId = '[ID não encontrado]';
+        if (headerTitleElement) {
+            const fullTitle = headerTitleElement.textContent.replace(/\s+/g, ' ').trim();
+            const matchId = fullTitle.match(/\(#(\d+)\)/);
+            if (matchId && matchId[1]) {
+                ticketId = matchId[1];
+                ticketTitle = fullTitle.replace(/\(#\d+\)\s*-\s*/, '').trim();
+            } else {
+                ticketTitle = fullTitle;
+            }
+        }
+
+        return `Relatório de Atendimento - ${today}\n` +
+               `Cliente: ${clientName}\n` +
+               `Chamado: ${ticketId}\n` +
+               `Título: ${ticketTitle}`;
+    }
+};
+// --- Fim do Handler: GLPI ---
+
+
+// --- Lógica Principal (Roteador e Observador) ---
+
+let activeHandler = null; 
+
+/**
+ * Função chamada pelo MutationObserver.
+ * Tenta detetar o handler e, se encontrado, procura o botão.
+ */
+function onMutation() {
+    if (!isExtensionEnabled) {
+        return;
+    }
+
+    if (activeHandler && document.querySelector('[data-crx-listener="true"]')) {
+         if (pageObserver) {
+            pageObserver.disconnect();
+            pageObserver = null;
+            console.log('[Gerador de Resumo] Botão gatilho encontrado e listener anexado. Observer parado.');
+         }
+         return;
+    }
+
+    if (!activeHandler) {
+        activeHandler = detectAndSelectHandler();
+        if (activeHandler) {
+            console.log(`[Gerador de Resumo] Handler detetado: ${activeHandler.siteIdentifier}.`);
+        } else {
+            return; 
+        }
+    }
+
+    // *** CORREÇÃO AQUI ***
+    // Chama a função findTriggerButton do handler ativo
+    if (activeHandler && !document.querySelector('[data-crx-listener="true"]')) {
+        activeHandler.findTriggerButton();
+    }
+}
+
+
+/**
+ * Determina qual handler (lógica de site) usar com base no conteúdo da página.
+ */
+function detectAndSelectHandler() {
+    const finalizarButtonSpan = Array.from(document.querySelectorAll('span.v-btn__content')).find(span => span.textContent.trim() === 'Finalizar');
+    if (finalizarButtonSpan && finalizarButtonSpan.closest('button')) {
+         console.log("[Gerador de Resumo] Detetada estrutura VerdanaDesk_Finalizar.");
+        return VerdanaDeskHandler;
+    }
+
+     const solucaoButtonSpan = Array.from(document.querySelectorAll('button.action-solution span')).find(span => span.textContent.trim() === 'Solução');
+     if (solucaoButtonSpan && solucaoButtonSpan.closest('button')) {
+          console.log("[Gerador de Resumo] Detetada estrutura GLPI_Solucao.");
+         return GlpiHandler;
+     }
+
+    return null; // Nenhum handler compatível encontrado
+}
+
+/**
+ * Inicia ou para de observar a página.
+ */
+function setupObserver(enable) {
+    if (pageObserver) {
+        pageObserver.disconnect();
+        pageObserver = null;
+        console.log('[Gerador de Resumo] Observer parado.');
+    }
+    
+    document.querySelectorAll('[data-crx-listener="true"]').forEach(btn => {
+        btn.removeAttribute('data-crx-listener');
+        // Remove listeners de ambos os handlers para garantir
+        if (typeof VerdanaDeskHandler !== 'undefined' && typeof VerdanaDeskHandler.onTriggerButtonClick === 'function') {
+             btn.removeEventListener('click', VerdanaDeskHandler.onTriggerButtonClick); 
+        }
+        if (typeof GlpiHandler !== 'undefined' && typeof GlpiHandler.onTriggerButtonClick === 'function') {
+            btn.removeEventListener('click', GlpiHandler.onTriggerButtonClick, true); 
+        }
+    });
+    activeHandler = null; 
+
+    if (enable) {
+        console.log('[Gerador de Resumo] Ativado. Iniciando MutationObserver...');
+        pageObserver = new MutationObserver(onMutation);
+        pageObserver.observe(document.body, { childList: true, subtree: true });
+        onMutation(); // Tenta executar imediatamente
+    } else {
+        console.log('[Gerador de Resumo] Desativado.');
+    }
+}
+
+
+// --- Comunicação com o popup e background ---
+chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     if (request.command === 'toggleExtension') {
         isExtensionEnabled = request.enabled;
         setupObserver(isExtensionEnabled);
     }
     if (request.command === 'navigationHappened') {
-        // A página mudou, re-avalia o DOM
+        console.log('[Gerador de Resumo] Navegação detetada, reavaliando página...');
         if (isExtensionEnabled) {
-            setupObserver(true);
+            setupObserver(false); 
+            setupObserver(true);  
         }
     }
+     return false; 
 });
 
 // Verifica o estado inicial quando a página carrega
