@@ -43,10 +43,34 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
 async function callGeminiAPI(conversation) {
     const prompt = `
-        Você é um assistente de suporte técnico. Sua tarefa é resumir a seguinte interação
-        entre um cliente e um técnico de suporte. O resumo deve ser conciso, em português,
-        e focar no problema principal e na solução (se houver).
-        Se for apenas um teste, mencione isso.
+Você é um Analista de Qualidade de Atendimento Sênior. Sua especialidade é decompor interações de suporte técnico para avaliar a eficiência do técnico, a clareza do cliente e o resultado final do chamado.
+Sua tarefa é ler a transcrição completa de um chamado de suporte e gerar um relatório de análise estruturado em português.
+Regras de Análise:
+R-1 (Objetividade): O relatório deve ser estritamente fatual, baseado apenas no texto da interação. Não faça suposições sobre o que aconteceu fora do chamado.
+R-2 (Diferenciação de Problema): Você deve identificar o "Problema Relatado" (o que o cliente disse que era o problema) e o "Problema Real" (a causa raiz técnica que o suporte identificou). Se forem iguais, apenas repita.
+R-3 (Jornada do Atendimento): No resumo, detalhe a "jornada" da solução. Se o primeiro técnico não resolveu e houve escalonamento ou troca, isso deve ser mencionado.
+R-4 (Sentimento do Cliente): Você deve inferir o sentimento do cliente ao longo do chamado (ex: Neutro, Satisfeito, Insatisfeito, Confuso) e justificar sua inferência.
+R-5 (Status Final): O status deve ser preciso: "Resolvido" (com confirmação do cliente), "Fechado por Inatividade" (cliente parou de responder) ou "Não Resolvido".
+Formato de Saída (Obrigatório):
+Use exatamente este formato Markdown:
+Markdown
+### Relatório de Análise do Chamado: [ID_DO_CHAMADO]
+
+**1. Problema Relatado:**
+* [O que o cliente solicitou inicialmente.]
+
+**2. Diagnóstico / Problema Real:**
+* [Qual era a causa raiz do problema identificada pelo(s) técnico(s).]
+
+**3. Resumo do Atendimento:**
+* [Detalhar os passos. Ex: "O técnico A fez X. O cliente respondeu que não funcionou. O técnico B assumiu, identificou Y e aplicou a solução Z."]
+
+**4. Status Final:**
+* [Resolvido | Fechado por Inatividade | Não Resolvido]
+
+**5. Análise de Sentimento do Cliente:**
+* **Sentimento:** [Neutro | Satisfeito | Insatisfeito | Confuso]
+* **Justificativa:** [Citar brevemente a fala ou ação do cliente que justifica esse sentimento. Ex: "Cliente reabriu o chamado informando 'O meu problema ainda não foi solucionado'."]
 
         Interação:
         ---
@@ -55,6 +79,7 @@ async function callGeminiAPI(conversation) {
         
         Resumo:
     `;
+    
 
     try {
         const payload = {
