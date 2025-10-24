@@ -87,6 +87,46 @@ body #crx-modal-container.glpi-modal-override {
     color: #aaa; /* Cor do placeholder */
 }
 
+/* --- REMOVIDO: Container da Confirmação (Checkbox) --- */
+/* Estilos .crx-confirm-container removidos */
+
+
+/* --- NOVO: Container da Confirmação (View 3) --- */
+.crx-confirm-view h2 {
+    margin-bottom: 15px; /* Menos espaço no h2 da confirmação */
+}
+.crx-confirm-view p {
+    text-align: center; /* Centralizar o texto da pergunta */
+    align-self: center; /* Centralizar */
+    font-size: 15px;
+    margin-bottom: 20px;
+    margin-top: 0;
+}
+
+.crx-confirm-buttons {
+    display: flex;
+    justify-content: space-between; /* Botões separados */
+    width: 100%;
+    gap: 10px;
+}
+
+/* Botão secundário (Não) */
+.crx-button-secondary {
+    background-color: #6c757d; /* Cinza */
+    color: white;
+}
+.crx-button-secondary:hover:not(:disabled) {
+    background-color: #5a6268;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.15);
+}
+
+/* Ajusta o spinner para botões "Sim" e "Não" */
+.crx-confirm-buttons .crx-button {
+    flex: 1; /* Ocupa metade do espaço */
+}
+/* --- FIM --- */
+
+
 #crx-modal-container .crx-button {
     width: 100%;
     padding: 12px;
@@ -97,15 +137,17 @@ body #crx-modal-container.glpi-modal-override {
     font-size: 16px;
     font-weight: bold;
     cursor: pointer;
-    transition: background-color 0.2s, box-shadow 0.2s;
+    transition: background-color 0.2s, box-shadow 0.2s, opacity 0.2s; /* Adicionada transição de opacidade */
     text-align: center; /* Garante centralização do texto */
     display: flex; /* Para centralizar ícone e texto */
     align-items: center;
     justify-content: center;
     gap: 8px; /* Espaço entre ícone e texto */
+    position: relative; /* Necessário para o spinner */
+    overflow: hidden; /* Esconde texto quando o spinner aparece */
 }
 
-#crx-modal-container .crx-button:hover {
+#crx-modal-container .crx-button:hover:not(:disabled) {
     background-color: #006a4c; /* Verde mais escuro no hover */
     box-shadow: 0 2px 5px rgba(0,0,0,0.15); /* Sombra suave no hover */
 }
@@ -115,6 +157,48 @@ body #crx-modal-container.glpi-modal-override {
     cursor: not-allowed;
     opacity: 0.7;
 }
+
+#crx-modal-container .crx-button:disabled:hover {
+    background-color: #6c757d; /* Mantém a cor cinza no hover quando desabilitado */
+    box-shadow: none; /* Sem sombra */
+}
+
+
+/* --- Animação e Estilos do Spinner --- */
+@keyframes crx-spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+.crx-spinner {
+    display: none; /* Oculto por padrão */
+    width: 20px;
+    height: 20px;
+    border: 3px solid rgba(255, 255, 255, 0.3);
+    border-top-color: #ffffff;
+    border-radius: 50%;
+    animation: crx-spin 0.8s linear infinite;
+}
+
+.crx-button-text {
+    display: inline-block; /* Garante que o span seja tratado como um bloco */
+    transition: opacity 0.2s;
+}
+
+/* Estado de Loading do Botão */
+.crx-button.loading .crx-button-text {
+    visibility: hidden; /* Esconde o texto */
+    opacity: 0;
+}
+.crx-button.loading .crx-spinner {
+    display: block; /* Mostra o spinner */
+    position: absolute; /* Centraliza o spinner */
+    top: 50%;
+    left: 50%;
+    margin-top: -10px; /* Metade da altura */
+    margin-left: -10px; /* Metade da largura */
+}
+/* --- FIM Spinner --- */
 
 
 /* Estilo específico para o textarea do relatório (View 2) */
@@ -133,7 +217,7 @@ body #crx-modal-container.glpi-modal-override {
     background-color: #00875f; /* Verde principal da extensão */
 }
 
-#crx-copy-button:hover {
+#crx-copy-button:hover:not(:disabled) {
     background-color: #006a4c; /* Verde mais escuro */
 }
 

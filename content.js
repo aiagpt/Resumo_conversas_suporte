@@ -21,6 +21,11 @@ function createModalUI() {
     view2.style.display = 'none';
     modalContainer.appendChild(view2);
 
+    // NOVO: View de Confirmação
+    const viewConfirm = createConfirmView();
+    viewConfirm.style.display = 'none';
+    modalContainer.appendChild(viewConfirm);
+
     const copyButton = view2.querySelector('#crx-copy-button');
     const reportTextarea = view2.querySelector('#crx-report-textarea');
 
@@ -38,18 +43,27 @@ function createModalUI() {
         }, 2000);
     });
 
-    return { modalContainer, view1, view2, reportTextarea };
+    return { modalContainer, view1, view2, viewConfirm, reportTextarea };
 }
 
 function createView1() {
     const view = document.createElement('div');
     view.className = 'crx-view';
+    // --- HTML ATUALIZADO ---
+    // 1. Removido o checkbox
+    // 2. Botão "Gerar Resumo" habilitado por padrão
     view.innerHTML = `
         <h2>Gerador de Resumo</h2>
-        <button id="crx-generate-button" class="crx-button">Gerar Resumo da Conversa</button>
+        
         <p>Observação (opcional):</p>
         <textarea id="crx-obs-textarea" placeholder="Digite suas observações aqui..."></textarea>
+        
+        <button id="crx-generate-button" class="crx-button">
+            <span class="crx-button-text">Gerar Resumo da Conversa</span>
+            <div class="crx-spinner"></div>
+        </button>
     `;
+    // --- FIM DA ATUALIZAÇÃO ---
     return view;
 }
 
@@ -63,6 +77,30 @@ function createView2() {
     `;
     return view;
 }
+
+// NOVO: Função para criar a view de confirmação
+function createConfirmView() {
+    const view = document.createElement('div');
+    view.className = 'crx-view crx-confirm-view';
+    // --- LÓGICA INVERTIDA ---
+    // "Sim" (Pular IA) é o secundário (cinza)
+    // "Não" (Usar IA) é o primário (verde)
+    view.innerHTML = `
+        <h2>Verificação de Segurança</h2>
+        <p>A conversa contém dados sensíveis (senhas, CPFs, cartões, etc.)?</p>
+        <div class="crx-confirm-buttons">
+            <button id="crx-confirm-yes" class="crx-button crx-button-secondary">
+                <span class="crx-button-text">Sim (Pular IA)</span>
+                <div class="crx-spinner"></div>
+            </button>
+            <button id="crx-confirm-no" class="crx-button">
+                <span class="crx-button-text">Não (Usar IA)</span>
+                <div class="crx-spinner"></div>
+            </button>
+        </div>
+    `;
+    return view;
+}
 // --- Fim da Lógica de UI (Genérica) ---
 
 
@@ -70,7 +108,6 @@ function createView2() {
 
 /**
  * Manipulador para a estrutura original (VerdanaDesk com botão "Finalizar")
- * Lógica original mantida, que espera o overlay do Vuetify.
  */
 const VerdanaDeskHandler = {
 
@@ -110,19 +147,39 @@ const VerdanaDeskHandler = {
         const existingModal = document.getElementById('crx-modal-container');
         if (existingModal) existingModal.remove();
 
-        const { modalContainer, view1, view2, reportTextarea } = createModalUI();
+        // ATUALIZADO: Pega as 3 views
+        const { modalContainer, view1, view2, viewConfirm, reportTextarea } = createModalUI();
+        
         const generateButton = view1.querySelector('#crx-generate-button');
         const obsTextarea = view1.querySelector('#crx-obs-textarea');
+        
+        // --- LÓGICA INVERTIDA ---
+        const confirmYesButton = viewConfirm.querySelector('#crx-confirm-yes'); // Botão SIM (Pular IA)
+        const confirmNoButton = viewConfirm.querySelector('#crx-confirm-no');   // Botão NÃO (Usar IA)
+        // -----------------------
 
-        // *** CORREÇÃO CRÍTICA: Impede que o clique neste botão feche o overlay pai ***
+        // --- LÓGICA DE GERAÇÃO (VIEW 1) ---
         generateButton.addEventListener('click', (e_gen) => {
             e_gen.stopPropagation(); // Impede que o clique "borbulhe" para o overlay
 
-            generateButton.textContent = 'Processando... ⌛';
-            generateButton.disabled = true;
-            obsTextarea.style.color = '#000';
+            // Apenas troca para a view de confirmação
+            view1.style.display = 'none';
+            viewConfirm.style.display = 'flex';
+        });
 
-            // Extração de dados acontece AQUI, depois que o overlay está visível
+
+        // --- LÓGICA CONFIRMAÇÃO "NÃO" (Usar IA) ---
+        confirmNoButton.addEventListener('click', (e_no) => {
+            e_no.stopPropagation(); // Impede o clique no overlay
+            
+            // --- ATIVA O LOADING (no botão "Não") ---
+            confirmNoButton.classList.add('loading');
+            confirmNoButton.disabled = true;
+            confirmYesButton.disabled = true; // Desabilita ambos
+            obsTextarea.style.color = '#000';
+            // ---------------------
+
+            // Extração de dados acontece AQUI
             const ticketInfo = VerdanaDeskHandler.extractTicketDataFromPopup();
             const chatLog = VerdanaDeskHandler.extractChatLog();
             const observations = obsTextarea.value;
@@ -139,38 +196,68 @@ const VerdanaDeskHandler = {
             chrome.runtime.sendMessage(
                 { command: 'summarizeConversation', conversation: fullConversation },
                 (response) => {
+                    // --- DESATIVA O LOADING ---
+                    const currentConfirmYes = document.getElementById('crx-confirm-yes');
+                    const currentConfirmNo = document.getElementById('crx-confirm-no');
+                    if (currentConfirmYes && currentConfirmNo) {
+                        currentConfirmNo.classList.remove('loading');
+                        currentConfirmNo.disabled = false;
+                        currentConfirmYes.disabled = false;
+                    }
+                    // ------------------------
+
                     if (chrome.runtime.lastError) {
                         console.error('[ContentScript] Contexto invalidado (Verdana):', chrome.runtime.lastError.message);
                         document.getElementById('crx-modal-container')?.remove();
                         return;
                     }
                     
-                    const currentGenerateButton = document.getElementById('crx-generate-button');
-                    if (currentGenerateButton) {
-                         currentGenerateButton.textContent = 'Gerar Resumo da Conversa';
-                         currentGenerateButton.disabled = false;
-                    }
-
                     if (response && response.summary) {
                         const originalReport = VerdanaDeskHandler.extractReportBaseData(); 
                         reportTextarea.value = `${originalReport}\n\nResumo da IA:\n${response.summary}`;
                         if (observations.trim() !== '') {
                             reportTextarea.value += `\n\nObservações Adicionais:\n${observations}`;
                         }
-                        view1.style.display = 'none';
+                        // Troca para a view 2 (Resultado)
+                        viewConfirm.style.display = 'none';
                         view2.style.display = 'flex';
                     } else if (response && response.error) {
                         console.error('[ContentScript] Erro (Verdana):', response.error);
+                        // Volta para a view 1 para mostrar o erro
+                        viewConfirm.style.display = 'none';
+                        view1.style.display = 'flex';
                         obsTextarea.value = `Erro ao gerar resumo: ${response.error}`;
                         obsTextarea.style.color = 'red';
                     } else {
                         console.error('[ContentScript] Resposta inválida (Verdana):', response);
+                        // Volta para a view 1 para mostrar o erro
+                        viewConfirm.style.display = 'none';
+                        view1.style.display = 'flex';
                         obsTextarea.value = 'Erro: Resposta inválida do script de background.';
                         obsTextarea.style.color = 'red';
                     }
                 }
             );
         });
+
+        // --- LÓGICA CONFIRMAÇÃO "SIM" (Pular IA) ---
+        confirmYesButton.addEventListener('click', (e_yes) => {
+            e_yes.stopPropagation(); // Impede o clique no overlay
+            
+            const originalReport = VerdanaDeskHandler.extractReportBaseData();
+            const observations = obsTextarea.value;
+            
+            // Popula o relatório SEM IA
+            reportTextarea.value = originalReport;
+            if (observations.trim() !== '') {
+                reportTextarea.value += `\n\nObservações Adicionais:\n${observations}`;
+            }
+            
+            // Troca para a view 2 (Resultado)
+            viewConfirm.style.display = 'none';
+            view2.style.display = 'flex';
+        });
+
 
         // Lógica de injeção original do VerdanaDesk (espera o overlay aparecer)
         setTimeout(() => {
@@ -194,9 +281,15 @@ const VerdanaDeskHandler = {
         let chatText = "Início da Conversa:\n";
         const messages = chatList.querySelectorAll('.v-list-item');
         messages.forEach(msg => {
-            const senderEl = msg.querySelector('.v-list-item-title .text-primary, .v-list-item-title .text-red');
+            // --- CORREÇÃO DO BUG ---
+            // Seletor antigo: '.v-list-item-title .text-primary, .v-list-item-title .text-red'
+            // Seletor novo: Pega qualquer span que NÃO seja o .text-grey (horário)
+            const senderEl = msg.querySelector('.v-list-item-title span:not(.text-grey)');
+            // --- FIM DA CORREÇÃO ---
+            
             const timeEl = msg.querySelector('.v-list-item-title .text-grey');
             const messageEl = msg.querySelector('.v-list-item-subtitle > .py-1');
+            
             if (senderEl && messageEl && timeEl) {
                 const sender = senderEl.textContent.trim();
                 const time = timeEl.textContent.trim();
@@ -239,7 +332,6 @@ const VerdanaDeskHandler = {
 
 /**
  * Manipulador para a estrutura GLPI (VerdanaDesk com botão "Solução")
- * Lógica nova, que impede o clique e injeta no body
  */
 const GlpiHandler = {
     siteIdentifier: "GLPI_Solucao",
@@ -284,14 +376,33 @@ const GlpiHandler = {
         const existingModal = document.getElementById('crx-modal-container');
         if (existingModal) existingModal.remove();
 
-        const { modalContainer, view1, view2, reportTextarea } = createModalUI();
+        // ATUALIZADO: Pega as 3 views
+        const { modalContainer, view1, view2, viewConfirm, reportTextarea } = createModalUI();
+        
         const generateButton = view1.querySelector('#crx-generate-button');
         const obsTextarea = view1.querySelector('#crx-obs-textarea');
+        
+        // --- LÓGICA INVERTIDA ---
+        const confirmYesButton = viewConfirm.querySelector('#crx-confirm-yes'); // Botão SIM (Pular IA)
+        const confirmNoButton = viewConfirm.querySelector('#crx-confirm-no');   // Botão NÃO (Usar IA)
+        // -----------------------
 
+
+        // --- LÓGICA DE GERAÇÃO (VIEW 1) ---
         generateButton.addEventListener('click', () => {
-            generateButton.textContent = 'Processando... ⌛';
-            generateButton.disabled = true;
+            // Apenas troca para a view de confirmação
+            view1.style.display = 'none';
+            viewConfirm.style.display = 'flex';
+        });
+
+        // --- LÓGICA CONFIRMAÇÃO "NÃO" (Usar IA) ---
+        confirmNoButton.addEventListener('click', () => {
+            // --- ATIVA O LOADING (no botão "Não") ---
+            confirmNoButton.classList.add('loading');
+            confirmNoButton.disabled = true;
+            confirmYesButton.disabled = true;
             obsTextarea.style.color = '#000';
+            // ---------------------
 
             const observations = obsTextarea.value;
             
@@ -307,36 +418,63 @@ const GlpiHandler = {
             chrome.runtime.sendMessage(
                 { command: 'summarizeConversation', conversation: fullConversation },
                 (response) => {
+                    // --- DESATIVA O LOADING ---
+                    const currentConfirmYes = document.getElementById('crx-confirm-yes');
+                    const currentConfirmNo = document.getElementById('crx-confirm-no');
+                    if (currentConfirmYes && currentConfirmNo) {
+                        currentConfirmNo.classList.remove('loading');
+                        currentConfirmNo.disabled = false;
+                        currentConfirmYes.disabled = false;
+                    }
+                    // ------------------------
+
                     if (chrome.runtime.lastError) {
                         console.error('[ContentScript] Erro (GLPI):', chrome.runtime.lastError.message);
                         return;
                     }
                     
-                    const currentGenerateButton = document.getElementById('crx-generate-button');
-                    if (currentGenerateButton) {
-                        currentGenerateButton.textContent = 'Gerar Resumo da Conversa';
-                        currentGenerateButton.disabled = false;
-                    }
-
                     if (response && response.summary) {
                         reportTextarea.value = `${baseData}\n\nResumo da IA:\n${response.summary}`; // Usa baseData já coletado
                         if (observations.trim() !== '') {
                             reportTextarea.value += `\n\nObservações Adicionais:\n${observations}`;
                         }
-                        view1.style.display = 'none';
+                        // Troca para a view 2 (Resultado)
+                        viewConfirm.style.display = 'none';
                         view2.style.display = 'flex';
                     } else if (response && response.error) {
                         console.error('[ContentScript] Erro (GLPI):', response.error);
+                        // Volta para a view 1 para mostrar o erro
+                        viewConfirm.style.display = 'none';
+                        view1.style.display = 'flex';
                         obsTextarea.value = `Erro ao gerar resumo: ${response.error}`;
                         obsTextarea.style.color = 'red';
                     } else {
                         console.error('[ContentScript] Resposta inválida (GLPI):', response);
+                         // Volta para a view 1 para mostrar o erro
+                        viewConfirm.style.display = 'none';
+                        view1.style.display = 'flex';
                         obsTextarea.value = 'Erro: Resposta inválida do script de background.';
                         obsTextarea.style.color = 'red';
                     }
                 }
             );
         });
+
+        // --- LÓGICA CONFIRMAÇÃO "SIM" (Pular IA) ---
+        confirmYesButton.addEventListener('click', () => {
+            const observations = obsTextarea.value;
+            
+            // Popula o relatório SEM IA
+            reportTextarea.value = baseData; // Usa baseData já coletado
+            if (observations.trim() !== '') {
+                reportTextarea.value += `\n\nObservações Adicionais:\n${observations}`;
+            }
+            
+            // Troca para a view 2 (Resultado)
+            viewConfirm.style.display = 'none';
+            view2.style.display = 'flex';
+        });
+
 
         // Injeta o modal no body
         setTimeout(() => {
