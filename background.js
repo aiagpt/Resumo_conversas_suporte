@@ -1,10 +1,24 @@
 const API_KEY = "AIzaSyBV2JMVddwSlM9TrxMmHCqvHAYIhTtxves";
 // --- ALTERADO: Modelo da API Nuvem atualizado ---
-const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${API_KEY}`;
+const API_URL = `https://generativethreelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${API_KEY}`;
 
 // --- API do Ollama (Local) ---
 const OLLAMA_URL = "http://10.3.129.109:11434/api/generate";
-const OLLAMA_MODEL = "phi4-mini"; // O seu modelo local
+const OLLAMA_MODEL = "phi4"; // O seu modelo local
+
+// --- NOVO: Lógica Keep-Alive (Sinal de Vida) ---
+const KEEPALIVE_ALARM = 'ollama-keep-alive';
+
+// Ouve o alarme
+chrome.alarms.onAlarm.addListener(alarm => {
+    if (alarm.name === KEEPALIVE_ALARM) {
+        // Esta função de audição (mesmo vazia) é suficiente para 
+        // reiniciar o temporizador de inatividade do service worker.
+        console.log("Keep-alive signal received.");
+    }
+});
+// --- FIM Lógica Keep-Alive ---
+
 
 // Observa mudanças na URL (navegação)
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
@@ -42,9 +56,15 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         return true; 
     }
     
-    // --- NOVA ROTA para a IA Local (Ollama) ---
+    // --- ROTA ATUALIZADA para a IA Local (Ollama) ---
     if (request.command === 'summarizeConversationLocal') {
         console.log('[Background] Recebido pedido para resumir (Local):', request.conversation);
+        
+        // --- NOVO: Inicia o alarme keep-alive ---
+        // Cria um alarme que dispara a cada 20 segundos (0.33 minutos)
+        chrome.alarms.create(KEEPALIVE_ALARM, {
+            periodInMinutes: 0.33 
+        });
         
         callOllamaAPI(request.conversation)
             .then(summary => {
@@ -54,6 +74,11 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             .catch(error => {
                 console.error('[Background] Erro na API (Local):', error);
                 sendResponse({ error: error.message });
+            })
+            .finally(() => {
+                // --- NOVO: Para o alarme keep-alive quando a chamada termina ---
+                console.log("Limpando alarme keep-alive.");
+                chrome.alarms.clear(KEEPALIVE_ALARM);
             });
             
         return true; // Manter canal aberto para resposta assíncrona
@@ -65,41 +90,28 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 async function callOllamaAPI(conversation) {
     // Este é o prompt que validámos para o phi4-mini
     const prompt = `
-Você é um Analista de Qualidade de Atendimento Sênior. Sua especialidade é decompor interações de suporte técnico para avaliar a eficiência do técnico, a clareza do cliente e o resultado final do chamado.
-Sua tarefa é ler a transcrição completa de um chamado de suporte e gerar um relatório de análise estruturado em português.
-Regras de Análise:
-R-1 (Objetividade): O relatório deve ser estritamente fatual, baseado apenas no texto da interação. Não faça suposições sobre o que aconteceu fora do chamado.
-R-2 (Diferenciação de Problema): Você deve identificar o "Problema Relatado" (o que o cliente disse que era o problema) e o "Problema Real" (a causa raiz técnica que o suporte identificou). Se forem iguais, apenas repita.
-R-3 (Jornada do Atendimento): No resumo, detalhe a "jornada" da solução. Se o primeiro técnico não resolveu e houve escalonamento ou troca, isso deve ser mencionado.
-R-4 (Sentimento do Cliente): Você deve inferir o sentimento do cliente ao longo do chamado (ex: Neutro, Satisfeito, Insatisfeito, Confuso) e justificar sua inferência.
-R-5 (Status Final): O status deve ser preciso: "Resolvido" (com confirmação do cliente), "Fechado por Inatividade" (cliente parou de responder) ou "Não Resolvido".
-Formato de Saída (Obrigatório):
-Use exatamente este formato Markdown:
-Markdown
-### Relatório de Análise do Chamado: [ID_DO_CHAMADO]
+Função: Você é um assistente de IA que resume conversas de suporte.
 
-**1. Problema Relatado:**
-* [O que o cliente solicitou inicialmente.]
+Tarefa: Analise a conversa abaixo. Gere um resumo focado no problema, no andamento e na solução.
 
-**2. Diagnóstico / Problema Real:**
-* [Qual era a causa raiz do problema identificada pelo(s) técnico(s).]
+Regras:
 
-**3. Resumo do Atendimento:**
-* [Detalhar os passos. Ex: "O técnico A fez X. O cliente respondeu que não funcionou. O técnico B assumiu, identificou Y e aplicou a solução Z."]
+Seja claro e objetivo.
 
-**4. Status Final:**
-* [Resolvido | Fechado por Inatividade | Não Resolvido]
+No campo "Andamento", resuma os principais passos do diagnóstico ou da interação.
 
-**5. Análise de Sentimento do Cliente:**
-* **Sentimento:** [Neutro | Satisfeito | Insatisfeito | Confuso]
-* **Justificativa:** [Citar brevemente a fala ou ação do cliente que justifica esse sentimento. Ex: "Cliente reabriu o chamado informando 'O meu problema ainda não foi solucionado'."]
+Indique o status final obrigatório: "Resolvido" ou "Não Resolvido".
 
-        Interação:
-        ---
-        ${conversation}
-        ---
-        
-        Resumo:
+Segurança: NÃO inclua informações sensíveis (nomes, senhas, emails, CPFs, telefones).
+
+Formato de Saída Obrigatório:
+
+*Andamento:* [Resumo dos principais pontos da interação ou diagnóstico]
+*Problema:* [Descrição concisa do problema do cliente]
+*Solução:* [Descrição da ação final de suporte ou encaminhamento]
+*Status Final:* [Resolvido / Não Resolvido]
+
+ ${conversation}
     `;
 
     try {
@@ -118,7 +130,10 @@ Markdown
         });
 
         if (!response.ok) {
-            throw new Error(`Falha ao contactar o Ollama (status: ${response.status}). Verifique se o Ollama está em execução.`);
+            // Se o modelo não existir (404) ou outro erro
+            const errorBody = await response.json();
+            const errorMsg = errorBody.error || `status: ${response.status}`;
+            throw new Error(`Falha na API Ollama: ${errorMsg}. Verifique se o modelo '${OLLAMA_MODEL}' está disponível no servidor.`);
         }
 
         const result = await response.json();
@@ -131,11 +146,12 @@ Markdown
 
     } catch (error) {
         console.error('[Background] Erro ao chamar a API do Ollama:', error);
-        // Mensagem de erro específica se o Ollama não estiver a rodar
+        
         if (error.message.includes('Failed to fetch')) {
-             throw new Error('Não foi possível conectar ao Ollama. Verifique se o Ollama está em execução no seu computador.');
+             throw new Error('Não foi possível conectar ao Ollama. Verifique se o servidor Ollama está em execução.');
         }
-        throw error;
+        // Repassa a mensagem de erro (ex: modelo não encontrado)
+        throw error; 
     }
 }
 
@@ -143,41 +159,27 @@ Markdown
 // --- FUNÇÃO da IA da Nuvem (GEMINI) - Intacta ---
 async function callGeminiAPI(conversation) {
     const prompt = `
-Você é um Analista de Qualidade de Atendimento Sênior. Sua especialidade é decompor interações de suporte técnico para avaliar a eficiência do técnico, a clareza do cliente e o resultado final do chamado.
-Sua tarefa é ler a transcrição completa de um chamado de suporte e gerar um relatório de análise estruturado em português.
-Regras de Análise:
-R-1 (Objetividade): O relatório deve ser estritamente fatual, baseado apenas no texto da interação. Não faça suposições sobre o que aconteceu fora do chamado.
-R-2 (Diferenciação de Problema): Você deve identificar o "Problema Relatado" (o que o cliente disse que era o problema) e o "Problema Real" (a causa raiz técnica que o suporte identificou). Se forem iguais, apenas repita.
-R-3 (Jornada do Atendimento): No resumo, detalhe a "jornada" da solução. Se o primeiro técnico não resolveu e houve escalonamento ou troca, isso deve ser mencionado.
-R-4 (Sentimento do Cliente): Você deve inferir o sentimento do cliente ao longo do chamado (ex: Neutro, Satisfeito, Insatisfeito, Confuso) e justificar sua inferência.
-R-5 (Status Final): O status deve ser preciso: "Resolvido" (com confirmação do cliente), "Fechado por Inatividade" (cliente parou de responder) ou "Não Resolvido".
-Formato de Saída (Obrigatório):
-Use exatamente este formato Markdown:
-Markdown
-### Relatório de Análise do Chamado: [ID_DO_CHAMADO]
+Contexto: Você é um especialista em análise de interações de suporte ao cliente. Sua função é processar transcrições do WhatsApp e extrair as informações mais relevantes de forma segura e anônima.
 
-**1. Problema Relatado:**
-* [O que o cliente solicitou inicialmente.]
+Tarefa: Analise a transcrição da conversa fornecida abaixo. Crie um resumo executivo que seja claro e intuitivo. O resumo deve capturar:
 
-**2. Diagnóstico / Problema Real:**
-* [Qual era a causa raiz do problema identificada pelo(s) técnico(s).]
+O problema inicial do cliente.
 
-**3. Resumo do Atendimento:**
-* [Detalhar os passos. Ex: "O técnico A fez X. O cliente respondeu que não funcionou. O técnico B assumiu, identificou Y e aplicou a solução Z."]
+O andamento da conversa (ex: passos de diagnóstico, tentativas de solução).
 
-**4. Status Final:**
-* [Resolvido | Fechado por Inatividade | Não Resolvido]
+A solução ou encaminhamento final.
 
-**5. Análise de Sentimento do Cliente:**
-* **Sentimento:** [Neutro | Satisfeito | Insatisfeito | Confuso]
-* **Justificativa:** [Citar brevemente a fala ou ação do cliente que justifica esse sentimento. Ex: "Cliente reabriu o chamado informando 'O meu problema ainda não foi solucionado'."]
+Restrições de Segurança (Críticas):
 
-        Interação:
-        ---
-        ${conversation}
-        ---
-        
-        Resumo:
+Anonimização Total: NÃO inclua, em hipótese alguma, informações sensíveis ou de identificação pessoal (nomes, senhas, CPFs, emails, telefones).
+
+Formato de Saída Obrigatório:
+
+*Andamento:* [Resumo dos principais pontos da interação ou diagnóstico]
+*Problema:* [Descrição concisa do problema do cliente]
+*Solução:* [Descrição da ação final de suporte ou encaminhamento]
+*Status Final:* [Resolvido / Não Resolvido]
+${conversation}
     `;
     
 

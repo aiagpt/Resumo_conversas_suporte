@@ -3,7 +3,11 @@
     "name": "Gerador de Resumo",
     "version": "1.3",
     "description": "Gera um resumo de conversas a partir de uma página.",
-    "permissions": ["storage", "tabs"],
+    "permissions": [
+        "storage", 
+        "tabs",
+        "alarms"
+    ],
     "host_permissions": [
         "https://*.verdanadesk.com/*",
         "https://generativelanguage.googleapis.com/",
@@ -29,6 +33,12 @@
         "16": "images/icon16.png",
         "48": "images/icon48.png",
         "128": "images/icon128.png"
-    }
+    },
+    "web_accessible_resources": [
+        {
+            "resources": [ "notificacao.mp3" ],
+            "matches": [ "https://*.verdanadesk.com/*" ]
+        }
+    ]
 }
 
