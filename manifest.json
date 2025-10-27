@@ -6,7 +6,8 @@
     "permissions": ["storage", "tabs"],
     "host_permissions": [
         "https://*.verdanadesk.com/*",
-        "https://generativelanguage.googleapis.com/"
+        "https://generativelanguage.googleapis.com/",
+        "http://10.3.129.109:11434/*"
     ],
     "action": {
         "default_popup": "popup.html",

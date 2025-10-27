@@ -83,18 +83,18 @@ function createConfirmView() {
     const view = document.createElement('div');
     view.className = 'crx-view crx-confirm-view';
     // --- LÓGICA INVERTIDA ---
-    // "Sim" (Pular IA) é o secundário (cinza)
-    // "Não" (Usar IA) é o primário (verde)
+    // "Sim" (IA Local) é o secundário (cinza)
+    // "Não" (IA Nuvem) é o primário (verde)
     view.innerHTML = `
         <h2>Verificação de Segurança</h2>
         <p>A conversa contém dados sensíveis (senhas, CPFs, cartões, etc.)?</p>
         <div class="crx-confirm-buttons">
             <button id="crx-confirm-yes" class="crx-button crx-button-secondary">
-                <span class="crx-button-text">Si</span>
+                <span class="crx-button-text">Sim (Usar IA Local)</span>
                 <div class="crx-spinner"></div>
             </button>
             <button id="crx-confirm-no" class="crx-button">
-                <span class="crx-button-text">Não</span>
+                <span class="crx-button-text">Não (Usar IA Nuvem)</span>
                 <div class="crx-spinner"></div>
             </button>
         </div>
@@ -161,7 +161,7 @@ const VerdanaDeskHandler = {
                 viewConfirm.style.display = 'flex';
             });
 
-            // --- LÓGICA CONFIRMAÇÃO "NÃO" (Usar IA) ---
+            // --- LÓGICA CONFIRMAÇÃO "NÃO" (Usar IA da Nuvem - Gemini) ---
             confirmNoButton.addEventListener('click', (e_no) => {
                 // --- Try...catch específico para o conteúdo do listener ---
                 try {
@@ -186,7 +186,7 @@ const VerdanaDeskHandler = {
                     // --- Try...catch para sendMessage ---
                     try {
                         chrome.runtime.sendMessage(
-                            { command: 'summarizeConversation', conversation: fullConversation },
+                            { command: 'summarizeConversation', conversation: fullConversation }, // Comando da Nuvem
                             (response) => {
                                 // --- Try...catch para o callback ---
                                 try {
@@ -199,36 +199,35 @@ const VerdanaDeskHandler = {
                                     }
 
                                     if (chrome.runtime.lastError) {
-                                        console.error('[ContentScript] Contexto invalidado no callback (Verdana):', chrome.runtime.lastError.message);
+                                        console.error('[ContentScript] Contexto invalidado no callback (Verdana Nuvem):', chrome.runtime.lastError.message);
                                         document.getElementById('crx-modal-container')?.remove();
                                         return;
                                     }
                                     
                                     if (response && response.summary) {
                                         const originalReport = VerdanaDeskHandler.extractReportBaseData(); 
-                                        reportTextarea.value = `${originalReport}\n\nResumo da IA:\n${response.summary}`;
+                                        reportTextarea.value = `${originalReport}\n\nResumo da IA (Nuvem):\n${response.summary}`;
                                         if (observations.trim() !== '') {
                                             reportTextarea.value += `\n\nObservações Adicionais:\n${observations}`;
                                         }
                                         viewConfirm.style.display = 'none';
                                         view2.style.display = 'flex';
                                     } else if (response && response.error) {
-                                        console.error('[ContentScript] Erro no resumo (Verdana):', response.error);
+                                        console.error('[ContentScript] Erro no resumo (Verdana Nuvem):', response.error);
                                         viewConfirm.style.display = 'none';
                                         view1.style.display = 'flex';
-                                        obsTextarea.value = `Erro ao gerar resumo: ${response.error}`;
+                                        obsTextarea.value = `Erro ao gerar resumo (Nuvem): ${response.error}`;
                                         obsTextarea.style.color = 'red';
                                     } else {
-                                        console.error('[ContentScript] Resposta inválida (Verdana):', response);
+                                        console.error('[ContentScript] Resposta inválida (Verdana Nuvem):', response);
                                         viewConfirm.style.display = 'none';
                                         view1.style.display = 'flex';
-                                        obsTextarea.value = 'Erro: Resposta inválida do script de background.';
+                                        obsTextarea.value = 'Erro: Resposta inválida do script de background (Nuvem).';
                                         obsTextarea.style.color = 'red';
                                     }
                                 // --- Catch para o callback ---
                                 } catch (e) {
-                                    console.error('[ContentScript] Erro fatal no callback (Verdana):', e.message);
-                                    // Tenta reverter a UI mesmo que o contexto esteja ruim
+                                    console.error('[ContentScript] Erro fatal no callback (Verdana Nuvem):', e.message);
                                     try {
                                         const currentConfirmYes = document.getElementById('crx-confirm-yes');
                                         const currentConfirmNo = document.getElementById('crx-confirm-no');
@@ -249,13 +248,12 @@ const VerdanaDeskHandler = {
                         );
                     // --- Catch para sendMessage ---
                     } catch (error) {
-                        console.error('[ContentScript] Falha ao enviar mensagem (Verdana):', error.message);
+                        console.error('[ContentScript] Falha ao enviar mensagem (Verdana Nuvem):', error.message);
                         throw error; // Re-lança para ser pego pelo catch externo do listener
                     }
                 // --- Catch específico para o conteúdo do listener ---
                 } catch (error) {
-                    console.error('[ContentScript] Erro no listener do botão "Não" (Verdana):', error.message);
-                    // Tenta reverter a UI mesmo que o contexto esteja ruim
+                    console.error('[ContentScript] Erro no listener do botão "Não" (Verdana Nuvem):', error.message);
                     try {
                         const currentConfirmYes = document.getElementById('crx-confirm-yes');
                         const currentConfirmNo = document.getElementById('crx-confirm-no');
@@ -274,20 +272,115 @@ const VerdanaDeskHandler = {
                 }
             });
 
-            // --- LÓGICA CONFIRMAÇÃO "SIM" (Pular IA) ---
+            // --- LÓGICA CONFIRMAÇÃO "SIM" (Usar IA Local - Ollama) ---
             confirmYesButton.addEventListener('click', (e_yes) => {
-                e_yes.stopPropagation();
-                
-                const originalReport = VerdanaDeskHandler.extractReportBaseData();
-                const observations = obsTextarea.value;
-                
-                reportTextarea.value = originalReport;
-                if (observations.trim() !== '') {
-                    reportTextarea.value += `\n\nObservações Adicionais:\n${observations}`;
+                // --- Try...catch específico para o conteúdo do listener ---
+                try {
+                    e_yes.stopPropagation();
+                    
+                    confirmYesButton.classList.add('loading');
+                    confirmYesButton.disabled = true;
+                    confirmNoButton.disabled = true;
+                    obsTextarea.style.color = '#000';
+
+                    const ticketInfo = VerdanaDeskHandler.extractTicketDataFromPopup();
+                    const chatLog = VerdanaDeskHandler.extractChatLog();
+                    const observations = obsTextarea.value;
+                    
+                    let fullConversation = "--- Informações do Ticket (do popup) ---\n" + ticketInfo +
+                                        "\n\n--- Histórico da Conversa (do chat) ---\n" + chatLog;
+
+                    if (observations.trim() !== '') {
+                        fullConversation += `\n\n--- Observações Adicionais do Técnico ---\n${observations}`;
+                    }
+                    
+                    // --- Try...catch para sendMessage ---
+                    try {
+                        chrome.runtime.sendMessage(
+                            { command: 'summarizeConversationLocal', conversation: fullConversation }, // Comando Local
+                            (response) => {
+                                // --- Try...catch para o callback ---
+                                try {
+                                    const currentConfirmYes = document.getElementById('crx-confirm-yes');
+                                    const currentConfirmNo = document.getElementById('crx-confirm-no');
+                                    if (currentConfirmYes && currentConfirmNo) {
+                                        currentConfirmYes.classList.remove('loading');
+                                        currentConfirmYes.disabled = false;
+                                        currentConfirmNo.disabled = false;
+                                    }
+
+                                    if (chrome.runtime.lastError) {
+                                        console.error('[ContentScript] Contexto invalidado no callback (Verdana Local):', chrome.runtime.lastError.message);
+                                        document.getElementById('crx-modal-container')?.remove();
+                                        return;
+                                    }
+                                    
+                                    if (response && response.summary) {
+                                        const originalReport = VerdanaDeskHandler.extractReportBaseData(); 
+                                        reportTextarea.value = `${originalReport}\n\nResumo da IA (Local/Anonimizado):\n${response.summary}`;
+                                        if (observations.trim() !== '') {
+                                            reportTextarea.value += `\n\nObservações Adicionais:\n${observations}`;
+                                        }
+                                        viewConfirm.style.display = 'none';
+                                        view2.style.display = 'flex';
+                                    } else if (response && response.error) {
+                                        console.error('[ContentScript] Erro no resumo (Verdana Local):', response.error);
+                                        viewConfirm.style.display = 'none';
+                                        view1.style.display = 'flex';
+                                        obsTextarea.value = `Erro ao gerar resumo (Local): ${response.error}`;
+                                        obsTextarea.style.color = 'red';
+                                    } else {
+                                        console.error('[ContentScript] Resposta inválida (Verdana Local):', response);
+                                        viewConfirm.style.display = 'none';
+                                        view1.style.display = 'flex';
+                                        obsTextarea.value = 'Erro: Resposta inválida do script de background (Local).';
+                                        obsTextarea.style.color = 'red';
+                                    }
+                                // --- Catch para o callback ---
+                                } catch (e) {
+                                    console.error('[ContentScript] Erro fatal no callback (Verdana Local):', e.message);
+                                    try {
+                                        const currentConfirmYes = document.getElementById('crx-confirm-yes');
+                                        const currentConfirmNo = document.getElementById('crx-confirm-no');
+                                        if (currentConfirmYes && currentConfirmNo) {
+                                            currentConfirmYes.classList.remove('loading');
+                                            currentConfirmYes.disabled = false;
+                                            currentConfirmNo.disabled = false;
+                                        }
+                                        viewConfirm.style.display = 'none';
+                                        view1.style.display = 'flex';
+                                        obsTextarea.value = 'Erro: A extensão foi recarregada (callback). Feche e tente de novo.';
+                                        obsTextarea.style.color = 'red';
+                                    } catch (modalError) {
+                                        console.error("Erro ao reverter modal no callback.", modalError);
+                                    }
+                                }
+                            }
+                        );
+                    // --- Catch para sendMessage ---
+                    } catch (error) {
+                        console.error('[ContentScript] Falha ao enviar mensagem (Verdana Local):', error.message);
+                        throw error; // Re-lança para ser pego pelo catch externo do listener
+                    }
+                // --- Catch específico para o conteúdo do listener ---
+                } catch (error) {
+                    console.error('[ContentScript] Erro no listener do botão "Sim" (Verdana Local):', error.message);
+                    try {
+                        const currentConfirmYes = document.getElementById('crx-confirm-yes');
+                        const currentConfirmNo = document.getElementById('crx-confirm-no');
+                        if (currentConfirmYes && currentConfirmNo) {
+                            currentConfirmYes.classList.remove('loading');
+                            currentConfirmYes.disabled = false;
+                            currentConfirmNo.disabled = false;
+                        }
+                        viewConfirm.style.display = 'none';
+                        view1.style.display = 'flex';
+                        obsTextarea.value = 'Erro: A extensão foi recarregada (listener). Feche e tente de novo.';
+                        obsTextarea.style.color = 'red';
+                    } catch (uiError) {
+                        console.error("Erro ao reverter UI no listener.", uiError);
+                    }
                 }
-                
-                viewConfirm.style.display = 'none';
-                view2.style.display = 'flex';
             });
 
             setTimeout(() => {
@@ -410,7 +503,7 @@ const GlpiHandler = {
                 viewConfirm.style.display = 'flex';
             });
 
-            // --- LÓGICA CONFIRMAÇÃO "NÃO" (Usar IA) ---
+            // --- LÓGICA CONFIRMAÇÃO "NÃO" (Usar IA da Nuvem - Gemini) ---
             confirmNoButton.addEventListener('click', () => {
                  // --- Try...catch específico para o conteúdo do listener ---
                 try {
@@ -431,7 +524,7 @@ const GlpiHandler = {
                     // --- Try...catch para sendMessage ---
                     try {
                         chrome.runtime.sendMessage(
-                            { command: 'summarizeConversation', conversation: fullConversation },
+                            { command: 'summarizeConversation', conversation: fullConversation }, // Comando da Nuvem
                             (response) => {
                                 // --- Try...catch para o callback ---
                                 try {
@@ -444,35 +537,34 @@ const GlpiHandler = {
                                     }
 
                                     if (chrome.runtime.lastError) {
-                                        console.error('[ContentScript] Erro no callback (GLPI):', chrome.runtime.lastError.message);
+                                        console.error('[ContentScript] Erro no callback (GLPI Nuvem):', chrome.runtime.lastError.message);
                                         document.getElementById('crx-modal-container')?.remove();
                                         return;
                                     }
                                     
                                     if (response && response.summary) {
-                                        reportTextarea.value = `${baseData}\n\nResumo da IA:\n${response.summary}`;
+                                        reportTextarea.value = `${baseData}\n\nResumo da IA (Nuvem):\n${response.summary}`;
                                         if (observations.trim() !== '') {
                                             reportTextarea.value += `\n\nObservações Adicionais:\n${observations}`;
                                         }
                                         viewConfirm.style.display = 'none';
                                         view2.style.display = 'flex';
                                     } else if (response && response.error) {
-                                        console.error('[ContentScript] Erro no resumo (GLPI):', response.error);
+                                        console.error('[ContentScript] Erro no resumo (GLPI Nuvem):', response.error);
                                         viewConfirm.style.display = 'none';
                                         view1.style.display = 'flex';
-                                        obsTextarea.value = `Erro ao gerar resumo: ${response.error}`;
+                                        obsTextarea.value = `Erro ao gerar resumo (Nuvem): ${response.error}`;
                                         obsTextarea.style.color = 'red';
                                     } else {
-                                        console.error('[ContentScript] Resposta inválida (GLPI):', response);
+                                        console.error('[ContentScript] Resposta inválida (GLPI Nuvem):', response);
                                         viewConfirm.style.display = 'none';
                                         view1.style.display = 'flex';
-                                        obsTextarea.value = 'Erro: Resposta inválida do script de background.';
+                                        obsTextarea.value = 'Erro: Resposta inválida do script de background (Nuvem).';
                                         obsTextarea.style.color = 'red';
                                     }
                                 // --- Catch para o callback ---
                                 } catch (e) {
-                                    console.error('[ContentScript] Erro fatal no callback (GLPI):', e.message);
-                                    // Tenta reverter a UI mesmo que o contexto esteja ruim
+                                    console.error('[ContentScript] Erro fatal no callback (GLPI Nuvem):', e.message);
                                      try {
                                         const currentConfirmYes = document.getElementById('crx-confirm-yes');
                                         const currentConfirmNo = document.getElementById('crx-confirm-no');
@@ -493,13 +585,12 @@ const GlpiHandler = {
                         );
                     // --- Catch para sendMessage ---
                      } catch (error) {
-                         console.error('[ContentScript] Falha ao enviar mensagem (GLPI):', error.message);
+                         console.error('[ContentScript] Falha ao enviar mensagem (GLPI Nuvem):', error.message);
                          throw error; // Re-lança para ser pego pelo catch externo do listener
                      }
                 // --- Catch específico para o conteúdo do listener ---
                 } catch (error) {
-                     console.error('[ContentScript] Erro no listener do botão "Não" (GLPI):', error.message);
-                     // Tenta reverter a UI mesmo que o contexto esteja ruim
+                     console.error('[ContentScript] Erro no listener do botão "Não" (GLPI Nuvem):', error.message);
                      try {
                         const currentConfirmYes = document.getElementById('crx-confirm-yes');
                         const currentConfirmNo = document.getElementById('crx-confirm-no');
@@ -518,17 +609,110 @@ const GlpiHandler = {
                 }
             });
 
-            // --- LÓGICA CONFIRMAÇÃO "SIM" (Pular IA) ---
+            // --- LÓGICA CONFIRMAÇÃO "SIM" (Usar IA Local - Ollama) ---
             confirmYesButton.addEventListener('click', () => {
-                const observations = obsTextarea.value;
-                
-                reportTextarea.value = baseData;
-                if (observations.trim() !== '') {
-                    reportTextarea.value += `\n\nObservações Adicionais:\n${observations}`;
+                 // --- Try...catch específico para o conteúdo do listener ---
+                try {
+                    confirmYesButton.classList.add('loading');
+                    confirmYesButton.disabled = true;
+                    confirmNoButton.disabled = true;
+                    obsTextarea.style.color = '#000';
+
+                    const observations = obsTextarea.value;
+                    
+                    let fullConversation = "--- Informações do Ticket ---\n" + ticketData +
+                                        "\n\n--- Histórico da Conversa ---\n" + chatLog;
+
+                    if (observations.trim() !== '') {
+                        fullConversation += `\n\n--- Observações Adicionais do Técnico ---\n${observations}`;
+                    }
+                    
+                    // --- Try...catch para sendMessage ---
+                    try {
+                        chrome.runtime.sendMessage(
+                            { command: 'summarizeConversationLocal', conversation: fullConversation }, // Comando Local
+                            (response) => {
+                                // --- Try...catch para o callback ---
+                                try {
+                                    const currentConfirmYes = document.getElementById('crx-confirm-yes');
+                                    const currentConfirmNo = document.getElementById('crx-confirm-no');
+                                    if (currentConfirmYes && currentConfirmNo) {
+                                        currentConfirmYes.classList.remove('loading');
+                                        currentConfirmYes.disabled = false;
+                                        currentConfirmNo.disabled = false;
+                                    }
+
+                                    if (chrome.runtime.lastError) {
+                                        console.error('[ContentScript] Erro no callback (GLPI Local):', chrome.runtime.lastError.message);
+                                        document.getElementById('crx-modal-container')?.remove();
+                                        return;
+                                    }
+                                    
+                                    if (response && response.summary) {
+                                        reportTextarea.value = `${baseData}\n\nResumo da IA (Local/Anonimizado):\n${response.summary}`;
+                                        if (observations.trim() !== '') {
+                                            reportTextarea.value += `\n\nObservações Adicionais:\n${observations}`;
+                                        }
+                                        viewConfirm.style.display = 'none';
+                                        view2.style.display = 'flex';
+                                    } else if (response && response.error) {
+                                        console.error('[ContentScript] Erro no resumo (GLPI Local):', response.error);
+                                        viewConfirm.style.display = 'none';
+                                        view1.style.display = 'flex';
+                                        obsTextarea.value = `Erro ao gerar resumo (Local): ${response.error}`;
+                                        obsTextarea.style.color = 'red';
+                                    } else {
+                                        console.error('[ContentScript] Resposta inválida (GLPI Local):', response);
+                                        viewConfirm.style.display = 'none';
+                                        view1.style.display = 'flex';
+                                        obsTextarea.value = 'Erro: Resposta inválida do script de background (Local).';
+                                        obsTextarea.style.color = 'red';
+                                    }
+                                // --- Catch para o callback ---
+                                } catch (e) {
+                                    console.error('[ContentScript] Erro fatal no callback (GLPI Local):', e.message);
+                                     try {
+                                        const currentConfirmYes = document.getElementById('crx-confirm-yes');
+                                        const currentConfirmNo = document.getElementById('crx-confirm-no');
+                                        if (currentConfirmYes && currentConfirmNo) {
+                                            currentConfirmYes.classList.remove('loading');
+                                            currentConfirmYes.disabled = false;
+                                            currentConfirmNo.disabled = false;
+                                        }
+                                        viewConfirm.style.display = 'none';
+                                        view1.style.display = 'flex';
+                                        obsTextarea.value = 'Erro: A extensão foi recarregada (callback). Feche e tente de novo.';
+                                        obsTextarea.style.color = 'red';
+                                    } catch (modalError) {
+                                        console.error("Erro ao reverter modal no callback.", modalError);
+                                    }
+                                }
+                            }
+                        );
+                    // --- Catch para sendMessage ---
+                     } catch (error) {
+                         console.error('[ContentScript] Falha ao enviar mensagem (GLPI Local):', error.message);
+                         throw error; // Re-lança para ser pego pelo catch externo do listener
+                     }
+                // --- Catch específico para o conteúdo do listener ---
+                } catch (error) {
+                     console.error('[ContentScript] Erro no listener do botão "Sim" (GLPI Local):', error.message);
+                     try {
+                        const currentConfirmYes = document.getElementById('crx-confirm-yes');
+                        const currentConfirmNo = document.getElementById('crx-confirm-no');
+                        if (currentConfirmYes && currentConfirmNo) {
+                            currentConfirmYes.classList.remove('loading');
+                            currentConfirmYes.disabled = false;
+                            currentConfirmNo.disabled = false;
+                        }
+                        viewConfirm.style.display = 'none';
+                        view1.style.display = 'flex';
+                        obsTextarea.value = 'Erro: A extensão foi recarregada (listener). Feche e tente de novo.';
+                        obsTextarea.style.color = 'red';
+                    } catch (uiError) {
+                        console.error("Erro ao reverter UI no listener.", uiError);
+                    }
                 }
-                
-                viewConfirm.style.display = 'none';
-                view2.style.display = 'flex';
             });
 
             setTimeout(() => {
