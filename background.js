@@ -1,20 +1,37 @@
 const API_KEY = "AIzaSyBV2JMVddwSlM9TrxMmHCqvHAYIhTtxves";
 // --- ALTERADO: Modelo da API Nuvem atualizado ---
-const API_URL = `https://generativethreelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${API_KEY}`;
+const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${API_KEY}`;
 
 // --- API do Ollama (Local) ---
-const OLLAMA_URL = "http://10.3.129.109:11434/api/generate";
+const OLLAMA_URL = "http://10.3.129.108:11434/api/generate";
 const OLLAMA_MODEL = "phi4"; // O seu modelo local
 
-// --- NOVO: Lógica Keep-Alive (Sinal de Vida) ---
+// --- Lógica Keep-Alive (Sinal de Vida) ---
 const KEEPALIVE_ALARM = 'ollama-keep-alive';
+const KEEPALIVE_INTERVAL_MS = 20 * 1000; // 20 segundos
+
+// Inicia (ou reinicia) o alarme
+function startKeepAlive() {
+    // Cria um alarme ÚNICO para disparar daqui a 20 segundos
+    chrome.alarms.create(KEEPALIVE_ALARM, {
+        when: Date.now() + KEEPALIVE_INTERVAL_MS
+    });
+    console.log("Keep-alive signal ENVIADO (próximo em 20s).");
+}
+
+// Para o alarme
+function stopKeepAlive() {
+    console.log("Limpando alarme keep-alive.");
+    chrome.alarms.clear(KEEPALIVE_ALARM);
+}
 
 // Ouve o alarme
 chrome.alarms.onAlarm.addListener(alarm => {
     if (alarm.name === KEEPALIVE_ALARM) {
-        // Esta função de audição (mesmo vazia) é suficiente para 
-        // reiniciar o temporizador de inatividade do service worker.
-        console.log("Keep-alive signal received.");
+        // O alarme disparou.
+        console.log("Keep-alive signal RECEBIDO.");
+        // Cria o PRÓXIMO alarme (reiniciando a cadeia)
+        startKeepAlive();
     }
 });
 // --- FIM Lógica Keep-Alive ---
@@ -22,7 +39,7 @@ chrome.alarms.onAlarm.addListener(alarm => {
 
 // Observa mudanças na URL (navegação)
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
-    // Verifica se o URL mudou e o carregamento está completo.
+// ... (restante do código inalterado) ...
     if (changeInfo.status === 'complete' && tab.url && tab.url.includes('verdanadesk.com')) {
         // Envia uma mensagem para o content script para que ele reavalie a página.
         chrome.tabs.sendMessage(tabId, {
@@ -37,6 +54,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     
     // Rota para a IA da Nuvem (Gemini) - Intacta
     if (request.command === 'summarizeConversation') {
+// ... (restante do código inalterado) ...
         console.log('[Background] Recebido pedido para resumir (Nuvem):', request.conversation);
         
         // Usamos .then() e .catch() para lidar com a promise
@@ -50,21 +68,16 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                 sendResponse({ error: error.message }); // Envia a resposta de ERRO
             });
         
-        // 'return true;' FICA AQUI, DENTRO do 'if'
-        // Isso informa ao Chrome para manter o canal de mensagem aberto
-        // para a resposta assíncrona.
         return true; 
     }
     
     // --- ROTA ATUALIZADA para a IA Local (Ollama) ---
     if (request.command === 'summarizeConversationLocal') {
+// ... (restante do código inalterado) ...
         console.log('[Background] Recebido pedido para resumir (Local):', request.conversation);
         
-        // --- NOVO: Inicia o alarme keep-alive ---
-        // Cria um alarme que dispara a cada 20 segundos (0.33 minutos)
-        chrome.alarms.create(KEEPALIVE_ALARM, {
-            periodInMinutes: 0.33 
-        });
+        // --- NOVO: Inicia a CADEIA de keep-alive ---
+        startKeepAlive();
         
         callOllamaAPI(request.conversation)
             .then(summary => {
@@ -76,9 +89,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                 sendResponse({ error: error.message });
             })
             .finally(() => {
-                // --- NOVO: Para o alarme keep-alive quando a chamada termina ---
-                console.log("Limpando alarme keep-alive.");
-                chrome.alarms.clear(KEEPALIVE_ALARM);
+                // --- NOVO: Para a CADEIA de keep-alive ---
+                stopKeepAlive();
             });
             
         return true; // Manter canal aberto para resposta assíncrona
@@ -88,11 +100,11 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
 // --- NOVA FUNÇÃO da IA Local (OLLAMA) ---
 async function callOllamaAPI(conversation) {
-    // Este é o prompt que validámos para o phi4-mini
+// ... (restante do código inalterado) ...
     const prompt = `
 Função: Você é um assistente de IA que resume conversas de suporte.
 
-Tarefa: Analise a conversa abaixo. Gere um resumo focado no problema, no andamento e na solução.
+Tarefa: Analise a conversa abaixo. Gere um resumo focado no problema, no andamento e na solu-ção.
 
 Regras:
 
@@ -116,12 +128,14 @@ Formato de Saída Obrigatório:
 
     try {
         const payload = {
+// ... (restante do código inalterado) ...
             model: OLLAMA_MODEL,
             prompt: prompt,
             stream: false // Queremos a resposta completa
         };
 
         const response = await fetch(OLLAMA_URL, {
+// ... (restante do código inalterado) ...
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -130,6 +144,7 @@ Formato de Saída Obrigatório:
         });
 
         if (!response.ok) {
+// ... (restante do código inalterado) ...
             // Se o modelo não existir (404) ou outro erro
             const errorBody = await response.json();
             const errorMsg = errorBody.error || `status: ${response.status}`;
@@ -139,12 +154,14 @@ Formato de Saída Obrigatório:
         const result = await response.json();
         
         if (result.response) {
+// ... (restante do código inalterado) ...
             return result.response; // O Ollama envia a resposta aqui
         } else {
             throw new Error('Resposta inesperada do Ollama.');
         }
 
     } catch (error) {
+// ... (restante do código inalterado) ...
         console.error('[Background] Erro ao chamar a API do Ollama:', error);
         
         if (error.message.includes('Failed to fetch')) {
@@ -158,6 +175,7 @@ Formato de Saída Obrigatório:
 
 // --- FUNÇÃO da IA da Nuvem (GEMINI) - Intacta ---
 async function callGeminiAPI(conversation) {
+// ... (restante do código inalterado) ...
     const prompt = `
 Contexto: Você é um especialista em análise de interações de suporte ao cliente. Sua função é processar transcrições do WhatsApp e extrair as informações mais relevantes de forma segura e anônima.
 
@@ -185,6 +203,7 @@ ${conversation}
 
     try {
         const payload = {
+// ... (restante do código inalterado) ...
             contents: [{ parts: [{ text: prompt }] }],
             // Configurações de segurança (opcional, mas recomendado)
             safetySettings: [
@@ -196,6 +215,7 @@ ${conversation}
         };
 
         const response = await fetch(API_URL, {
+// ... (restante do código inalterado) ...
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -204,15 +224,18 @@ ${conversation}
         });
 
         if (!response.ok) {
+// ... (restante do código inalterado) ...
             const errorBody = await response.text();
             console.error('[Background] Erro na resposta da API:', response.status, errorBody);
             throw new Error(`Falha na API: ${response.status}. Verifique sua chave de API e o console do background.`);
         }
 
         const result = await response.json();
+// ... (restante do código inalterado) ...
         const candidate = result.candidates?.[0];
 
         if (candidate && candidate.content?.parts?.[0]?.text) {
+// ... (restante do código inalterado) ...
             // Verifica se a IA terminou de gerar (pode haver 'finishReason')
             if (candidate.finishReason === "STOP" || candidate.finishReason === "MAX_TOKENS") {
                 return candidate.content.parts[0].text;
@@ -222,12 +245,14 @@ ${conversation}
                 return `O resumo não pôde ser gerado (Motivo: ${candidate.finishReason}).`;
             }
         } else {
+// ... (restante do código inalterado) ...
             // Resposta inesperada
             console.warn('[Background] Resposta inesperada da API:', JSON.stringify(result, null, 2));
             throw new Error('Formato de resposta inesperado da API.');
         }
 
     } catch (error) {
+// ... (restante do código inalterado) ...
         console.error('[Background] Erro ao chamar a API do Gemini:', error);
         throw error; // Repassa o erro para o listener
     }

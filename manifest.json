@@ -4,14 +4,14 @@
     "version": "1.3",
     "description": "Gera um resumo de conversas a partir de uma página.",
     "permissions": [
-        "storage", 
+        "storage",
         "tabs",
         "alarms"
     ],
     "host_permissions": [
         "https://*.verdanadesk.com/*",
-        "https://generativelanguage.googleapis.com/",
-        "http://10.3.129.109:11434/*"
+        "https://generativethreelanguage.googleapis.com/",
+        "http://10.3.129.108:11434/*"
     ],
     "action": {
         "default_popup": "popup.html",
@@ -24,11 +24,19 @@
     "background": {
         "service_worker": "background.js"
     },
-    "content_scripts": [{
-        "matches": ["https://*.verdanadesk.com/*"],
-        "js": ["content.js"],
-        "css": ["content.css"]
-    }],
+    "content_scripts": [
+        {
+            "matches": [
+                "https://*.verdanadesk.com/*"
+            ],
+            "js": [
+                "content.js"
+            ],
+            "css": [
+                "content.css"
+            ]
+        }
+    ],
     "icons": {
         "16": "images/icon16.png",
         "48": "images/icon48.png",
@@ -36,8 +44,12 @@
     },
     "web_accessible_resources": [
         {
-            "resources": [ "notificacao.mp3" ],
-            "matches": [ "https://*.verdanadesk.com/*" ]
+            "resources": [
+                "notificacao.mp3"
+            ],
+            "matches": [
+                "https://*.verdanadesk.com/*"
+            ]
         }
     ]
 }
