@@ -4,7 +4,7 @@ const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-
 
 // --- API do Ollama (Local) ---
 const OLLAMA_URL = "http://10.3.129.108:11434/api/generate";
-const OLLAMA_MODEL = "phi4"; // O seu modelo local
+const OLLAMA_MODEL = "llama3:8b"; // O seu modelo local
 
 // --- Lógica Keep-Alive (Sinal de Vida) ---
 const KEEPALIVE_ALARM = 'ollama-keep-alive';
@@ -102,28 +102,46 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 async function callOllamaAPI(conversation) {
 // ... (restante do código inalterado) ...
     const prompt = `
-Função: Você é um assistente de IA que resume conversas de suporte.
+Você é um assistente de IA analista de suporte, focado em alta fidelidade, extração de detalhes cronológicos e análise de qualidade.
 
-Tarefa: Analise a conversa abaixo. Gere um resumo focado no problema, no andamento e na solu-ção.
+Sua tarefa é processar a <Conversa> abaixo e gerar um registro estruturado e DETALhado em Português, incluindo uma análise de desempenho do suporte e um resumo geral.
 
-Regras:
+<Conversa>
+${conversation}
+</Conversa>
 
-Seja claro e objetivo.
+Siga estes passos de raciocínio OBRIGATORIAMENTE antes de gerar a saída:
 
-No campo "Andamento", resuma os principais passos do diagnóstico ou da interação.
+PASSO 1: (Análise do Problema) Descreva o problema em detalhe, explicando a queixa original do cliente e qualquer descoberta feita durante o diagnóstico.
 
-Indique o status final obrigatório: "Resolvido" ou "Não Resolvido".
+PASSO 2: (Análise do Andamento) Rastreie a conversa inteira cronologicamente. Crie uma lista numerada (1., 2., 3.) de CADA interação ou evento principal. Seja detalhado, explicando o que cada pessoa relatou e o que o suporte fez em resposta.
+- REGRA DE NOMES: Use os nomes das pessoas (ex: Janine Dalmann) para identificar quem está falando, mas OMITA e NÃO INCLUA qualquer informação sensível como números de telefone ou emails que possam estar ao lado do nome (ex: (5527999918661)).
 
-Segurança: NÃO inclua informações sensíveis (nomes, senhas, emails, CPFs, telefones).
+PASSO 3: (Análise da Solução) Descreva a solução final ou a ação de encaminhamento de forma detalhada, explicando o que foi feito e qual o próximo passo (se houver).
+
+PASSO 4: (Análise de Status) Determine o status final baseado *estritamente* nesta lógica:
+- Se o cliente confirmar verbalmente que o problema foi resolvido (ex: 'Funcionou!', 'Obrigado, deu certo!', 'Agora foi!'), o status é 'Resolvido'.
+- Para QUALQUER outro cenário (sem confirmação, cliente parou de responder, suporte encaminhou e aguarda), o status é 'Não Resolvido'.
+- Adicione um parêntese com uma breve justificativa para a sua escolha de status.
+
+PASSO 5: (Análise de Desempenho) Avalie objetivamente a atuação da equipe de suporte com base no andamento (PASSO 2). Identifique 1 ou 2 pontos principais. Seja neutro e baseado em fatos.
+- Pontos a melhorar: O suporte demorou a responder? Fez perguntas desnecessárias? Não entendeu o problema? Esqueceu de dar retorno?
+- Pontos positivos: Foi ágil? Fez as perguntas corretas para o diagnóstico? Foi claro na solução? Foi empático?
+
+PASSO 6: (Análise do Resumo Geral) Com base em todas as análises anteriores (Problema, Solução, Status), crie um resumo executivo de 1-2 frases. Ele deve explicar a queixa principal, a ação principal e o resultado final.
+
+**REGRA DE FORMATAÇÃO MAIS IMPORTANTE DE TODAS:**
+Sua resposta DEVE começar *exatamente* com o caractere ''' da linha ''*Resumo Geral:*''.
+É PROIBIDO gerar qualquer texto, título, ou preâmbulo (como 'A conversa foi processada com sucesso!') antes disso.
+A resposta DEVE terminar *exatamente* após a linha ''*Análise de Desempenho:*''.
 
 Formato de Saída Obrigatório:
-
-*Andamento:* [Resumo dos principais pontos da interação ou diagnóstico]
-*Problema:* [Descrição concisa do problema do cliente]
-*Solução:* [Descrição da ação final de suporte ou encaminhamento]
-*Status Final:* [Resolvido / Não Resolvido]
-
- ${conversation}
+'*Resumo Geral:*' [Resumo executivo de 1-2 frases do PASSO 6 em Português]
+'*Andamento:*' [Lista numerada e detalhada dos eventos do PASSO 2 em Português, incluindo os nomes das pessoas, MAS SEM telefones ou emails]
+'*Problema:*' [Descrição detalhada do problema do PASSO 1 em Português]
+'*Solução:*' [Descrição detalhada da solução do PASSO 3 em Português]
+'*Status Final:*' [Resolvido / Não Resolvido (com justificativa do PASSO 4)]
+'*Análise de Desempenho:*' [Análise objetiva do PASSO 5 em Português]
     `;
 
     try {
@@ -177,27 +195,46 @@ Formato de Saída Obrigatório:
 async function callGeminiAPI(conversation) {
 // ... (restante do código inalterado) ...
     const prompt = `
-Contexto: Você é um especialista em análise de interações de suporte ao cliente. Sua função é processar transcrições do WhatsApp e extrair as informações mais relevantes de forma segura e anônima.
+Você é um assistente de IA analista de suporte, focado em alta fidelidade, extração de detalhes cronológicos e análise de qualidade.
 
-Tarefa: Analise a transcrição da conversa fornecida abaixo. Crie um resumo executivo que seja claro e intuitivo. O resumo deve capturar:
+Sua tarefa é processar a <Conversa> abaixo e gerar um registro estruturado e DETALhado em Português, incluindo uma análise de desempenho do suporte e um resumo geral.
 
-O problema inicial do cliente.
+<Conversa>
+${conversation}
+</Conversa>
 
-O andamento da conversa (ex: passos de diagnóstico, tentativas de solução).
+Siga estes passos de raciocínio OBRIGATORIAMENTE antes de gerar a saída:
 
-A solução ou encaminhamento final.
+PASSO 1: (Análise do Problema) Descreva o problema em detalhe, explicando a queixa original do cliente e qualquer descoberta feita durante o diagnóstico.
 
-Restrições de Segurança (Críticas):
+PASSO 2: (Análise do Andamento) Rastreie a conversa inteira cronologicamente. Crie uma lista numerada (1., 2., 3.) de CADA interação ou evento principal. Seja detalhado, explicando o que cada pessoa relatou e o que o suporte fez em resposta.
+- REGRA DE NOMES: Use os nomes das pessoas (ex: Janine Dalmann) para identificar quem está falando, mas OMITA e NÃO INCLUA qualquer informação sensível como números de telefone ou emails que possam estar ao lado do nome (ex: (5527999918661)).
 
-Anonimização Total: NÃO inclua, em hipótese alguma, informações sensíveis ou de identificação pessoal (nomes, senhas, CPFs, emails, telefones).
+PASSO 3: (Análise da Solução) Descreva a solução final ou a ação de encaminhamento de forma detalhada, explicando o que foi feito e qual o próximo passo (se houver).
+
+PASSO 4: (Análise de Status) Determine o status final baseado *estritamente* nesta lógica:
+- Se o cliente confirmar verbalmente que o problema foi resolvido (ex: 'Funcionou!', 'Obrigado, deu certo!', 'Agora foi!'), o status é 'Resolvido'.
+- Para QUALQUER outro cenário (sem confirmação, cliente parou de responder, suporte encaminhou e aguarda), o status é 'Não Resolvido'.
+- Adicione um parêntese com uma breve justificativa para a sua escolha de status.
+
+PASSO 5: (Análise de Desempenho) Avalie objetivamente a atuação da equipe de suporte com base no andamento (PASSO 2). Identifique 1 ou 2 pontos principais. Seja neutro e baseado em fatos.
+- Pontos a melhorar: O suporte demorou a responder? Fez perguntas desnecessárias? Não entendeu o problema? Esqueceu de dar retorno?
+- Pontos positivos: Foi ágil? Fez as perguntas corretas para o diagnóstico? Foi claro na solução? Foi empático?
+
+PASSO 6: (Análise do Resumo Geral) Com base em todas as análises anteriores (Problema, Solução, Status), crie um resumo executivo de 1-2 frases. Ele deve explicar a queixa principal, a ação principal e o resultado final.
+
+**REGRA DE FORMATAÇÃO MAIS IMPORTANTE DE TODAS:**
+Sua resposta DEVE começar *exatamente* com o caractere ''' da linha ''*Resumo Geral:*''.
+É PROIBIDO gerar qualquer texto, título, ou preâmbulo (como 'A conversa foi processada com sucesso!') antes disso.
+A resposta DEVE terminar *exatamente* após a linha ''*Análise de Desempenho:*''.
 
 Formato de Saída Obrigatório:
-
-*Andamento:* [Resumo dos principais pontos da interação ou diagnóstico]
-*Problema:* [Descrição concisa do problema do cliente]
-*Solução:* [Descrição da ação final de suporte ou encaminhamento]
-*Status Final:* [Resolvido / Não Resolvido]
-${conversation}
+'*Resumo Geral:*' [Resumo executivo de 1-2 frases do PASSO 6 em Português]
+'*Andamento:*' [Lista numerada e detalhada dos eventos do PASSO 2 em Português, incluindo os nomes das pessoas, MAS SEM telefones ou emails]
+'*Problema:*' [Descrição detalhada do problema do PASSO 1 em Português]
+'*Solução:*' [Descrição detalhada da solução do PASSO 3 em Português]
+'*Status Final:*' [Resolvido / Não Resolvido (com justificativa do PASSO 4)]
+'*Análise de Desempenho:*' [Análise objetiva do PASSO 5 em Português]
     `;
     
 
