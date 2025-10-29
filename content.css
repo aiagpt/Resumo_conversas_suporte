@@ -15,6 +15,7 @@
     display: flex;
     flex-direction: column;
     color: #333; /* Cor de texto padrão */
+    /* A linha position: relative; foi removida daqui */
 }
 
 /* Garante que o modal esteja visível sobre elementos do GLPI */
@@ -110,7 +111,23 @@ body #crx-modal-container.glpi-modal-override {
     gap: 10px;
 }
 
-/* Botão secundário (Não) */
+/* --- NOVO: Grupo de botões na View 2 --- */
+.crx-button-group {
+    display: flex;
+    justify-content: space-between;
+    width: 100%;
+    gap: 10px;
+    margin-top: 10px; /* Espaço acima dos botões */
+}
+
+.crx-button-group .crx-button {
+    flex: 1; /* Ocupa metade do espaço */
+    margin-top: 0; /* Reseta margem se houver */
+}
+/* --- FIM --- */
+
+
+/* Botão secundário (Não / Gerar Novo) */
 .crx-button-secondary {
     background-color: #6c757d; /* Cinza */
     color: white;
@@ -209,15 +226,87 @@ body #crx-modal-container.glpi-modal-override {
     font-size: 13px; /* Tamanho um pouco menor para monospace */
     white-space: pre-wrap; /* Preserva espaços e quebras de linha */
     color: #212529; /* Cor de texto mais escura */
+    cursor: pointer; /* NOVO: Indica que é clicável */
 }
+
+/* NOVO: Estilo para o hover do textarea clicável */
+#crx-report-textarea:hover {
+    background-color: #f1f3f5; /* Leve escurecimento no hover */
+}
+
 
 /* Estilo para o botão Copiar */
 #crx-copy-button {
-    margin-top: 10px; /* Espaço acima do botão copiar */
+    margin-top: 0; /* Movido para o button-group */
     background-color: #00875f; /* Verde principal da extensão */
 }
 
 #crx-copy-button:hover:not(:disabled) {
     background-color: #006a4c; /* Verde mais escuro */
 }
+
+
+/* --- NOVO: Estilos do Lightbox (Modal de Visualização) --- */
+
+#crx-lightbox-container {
+    position: fixed; /* Cobre a TELA INTEIRA (relativo ao viewport) */
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(0, 0, 0, 0.8); /* Overlay escuro */
+    z-index: 1000; /* Fica acima de todo o conteúdo do modal */
+    display: none; /* Começa oculto */
+    align-items: center;
+    justify-content: center;
+    padding: 20px; /* Espaçamento das bordas */
+    /* border-radius: 10px;  Removido - não faz sentido em tela cheia */
+}
+
+.crx-lightbox-content {
+    width: 100%;
+    height: 100%;
+    max-width: 95vw; /* Limita ao viewport - Aumentado de 90vw */
+    max-height: 95vh; /* Limita ao viewport - Aumentado de 90vh */
+    background-color: white;
+    border-radius: 8px;
+    box-shadow: 0 5px 25px rgba(0,0,0,0.4);
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    padding: 25px; /* Espaço interno */
+}
+
+#crx-lightbox-close {
+    position: absolute;
+    top: 8px;
+    right: 12px;
+    background: transparent;
+    border: none;
+    font-size: 28px;
+    color: #555;
+    cursor: pointer;
+    line-height: 1;
+    z-index: 1001;
+}
+#crx-lightbox-close:hover {
+    color: #000;
+}
+
+#crx-lightbox-textarea {
+    flex-grow: 1; /* Ocupa todo o espaço disponível */
+    width: 100%;
+    /* height: 100%; <- REMOVIDO: Esta linha estava a causar o bug. */
+    resize: none;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+    padding: 10px;
+    font-family: monospace;
+    font-size: 14px;
+    background-color: #f8f9fa;
+    color: #212529;
+    white-space: pre-wrap;
+    box-sizing: border-box; /* Garante que o padding não estoure */
+}
+/* --- FIM Estilos do Lightbox --- */
 

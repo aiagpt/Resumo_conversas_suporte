@@ -52,8 +52,26 @@ function createModalUI() {
     viewConfirm.style.display = 'none';
     modalContainer.appendChild(viewConfirm);
 
+    // --- NOVO: Criação do Lightbox (Modal de Visualização) ---
+    const lightboxContainer = document.createElement('div');
+    lightboxContainer.id = 'crx-lightbox-container';
+    lightboxContainer.innerHTML = `
+        <div class="crx-lightbox-content">
+            <button id="crx-lightbox-close">&times;</button>
+            <textarea id="crx-lightbox-textarea" readonly></textarea>
+        </div>
+    `;
+    modalContainer.appendChild(lightboxContainer); // Adiciona ao modal principal
+    // --- FIM Lightbox ---
+
     const copyButton = view2.querySelector('#crx-copy-button');
     const reportTextarea = view2.querySelector('#crx-report-textarea');
+    // --- NOVO: Botão Gerar Novo ---
+    const retryButton = view2.querySelector('#crx-retry-button');
+
+    // --- NOVO: Referências do Lightbox ---
+    const lightboxTextarea = lightboxContainer.querySelector('#crx-lightbox-textarea');
+    const lightboxCloseButton = lightboxContainer.querySelector('#crx-lightbox-close');
 
     copyButton.addEventListener('click', () => {
         reportTextarea.select();
@@ -68,6 +86,33 @@ function createModalUI() {
             copyButton.innerHTML = '📋 Copiar';
         }, 2000);
     });
+
+    // --- NOVO: Listener para Gerar Novo ---
+    retryButton.addEventListener('click', () => {
+        // Volta para a view 1
+        document.getElementById('crx-view-2').style.display = 'none';
+        document.getElementById('crx-view-1').style.display = 'flex';
+        
+        // Limpa o textarea de observações para um novo resumo
+        const obsTextarea = document.getElementById('crx-obs-textarea');
+        if (obsTextarea) {
+            obsTextarea.value = '';
+            obsTextarea.style.color = '#333';
+        }
+    });
+
+    // --- NOVO: Listeners para abrir e fechar o Lightbox ---
+    reportTextarea.addEventListener('click', () => {
+        // Preenche o lightbox com o texto atual e o exibe
+        lightboxTextarea.value = reportTextarea.value;
+        lightboxContainer.style.display = 'flex';
+    });
+
+    lightboxCloseButton.addEventListener('click', () => {
+        // Esconde o lightbox
+        lightboxContainer.style.display = 'none';
+    });
+    // --- FIM Listeners Lightbox ---
 
     // Retorna as visualizações (embora agora vamos usar IDs)
     return { modalContainer, view1, view2, viewConfirm, reportTextarea };
@@ -100,7 +145,10 @@ function createView2() {
     view.innerHTML = `
         <h2>Relatório Gerado</h2>
         <textarea id="crx-report-textarea" readonly></textarea>
-        <button id="crx-copy-button" class="crx-button">📋 Copiar</button>
+        <div class="crx-button-group">
+            <button id="crx-copy-button" class="crx-button">📋 Copiar</button>
+            <button id="crx-retry-button" class="crx-button crx-button-secondary">🔄 Gerar Novo</button>
+        </div>
     `;
     return view;
 }
