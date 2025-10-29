@@ -281,32 +281,171 @@ body #crx-modal-container.glpi-modal-override {
     position: absolute;
     top: 8px;
     right: 12px;
-    background: transparent;
+    /* --- INÍCIO DA CORREÇÃO --- */
+    background-color: #00875f; /* Fundo verde */
     border: none;
-    font-size: 28px;
-    color: #555;
+    font-size: 20px; /* Tamanho do 'x' um pouco menor para caber no círculo */
+    color: white; /* Cor do 'x' branco */
     cursor: pointer;
-    line-height: 1;
+    /* line-height: 1; --- REMOVIDA ESTA LINHA --- */
     z-index: 1001;
+    width: 30px; /* Tamanho do botão (largura) */
+    height: 30px; /* Tamanho do botão (altura) */
+    border-radius: 50%; /* Faz o botão ser um círculo */
+    display: flex; /* Para centralizar o 'x' */
+    align-items: center;
+    justify-content: center;
+    transition: background-color 0.2s, transform 0.2s; /* Adiciona transição para hover */
+    /* --- FIM DA CORREÇÃO --- */
 }
 #crx-lightbox-close:hover {
-    color: #000;
+    background-color: #006a4c; /* Verde mais escuro no hover */
+    transform: scale(1.1); /* Efeito de "zoom" no hover */
 }
 
-#crx-lightbox-textarea {
+/* --- Seletor mais específico para o textarea (corrigido novamente) --- */
+#crx-modal-container #crx-lightbox-textarea {
     flex-grow: 1; /* Ocupa todo o espaço disponível */
     width: 100%;
-    /* height: 100%; <- REMOVIDO: Esta linha estava a causar o bug. */
+    
+    min-height: 0;   /* Reseta a altura mínima para o flexbox */
+    max-height: none;  /* Remove o limite de 200px da regra geral */
+    
     resize: none;
     border: 1px solid #ccc;
     border-radius: 6px;
     padding: 10px;
     font-family: monospace;
     font-size: 14px;
-    background-color: #f8f9fa;
+    /* --- NOVO: Estilos para Edição --- */
+    background-color: #ffffff; /* Fundo branco para edição */
     color: #212529;
+    /* --- FIM --- */
     white-space: pre-wrap;
     box-sizing: border-box; /* Garante que o padding não estoure */
 }
+
+/* --- NOVO: Foco no Textarea Editável --- */
+#crx-modal-container #crx-lightbox-textarea:focus {
+    border-color: #00875f;
+    box-shadow: 0 0 0 2px rgba(0, 135, 95, 0.2);
+    outline: none;
+}
+
+/* --- NOVO: Barra de Botões do Lightbox --- */
+.crx-lightbox-button-bar {
+    display: flex;
+    justify-content: flex-end; /* Alinha o botão à direita */
+    width: 100%;
+    padding-top: 10px; /* Espaço do textarea */
+    gap: 10px; /* Espaço entre botões (se houver mais) */
+}
+
+#crx-ai-fix-button {
+    width: auto; /* Tamanho automático */
+    padding: 8px 12px;
+    font-size: 14px;
+    font-weight: 500;
+    background-color: #0d6efd; /* Azul para "Ação" */
+    gap: 6px; /* Espaço para o ícone */
+}
+
+#crx-ai-fix-button:hover:not(:disabled) {
+    background-color: #0b5ed7;
+}
+/* --- FIM Barra de Botões --- */
+
+
+/* --- NOVO: Estilos do Modal de Confirmação de Edição --- */
+
+.crx-edit-confirm-overlay {
+    position: absolute; /* Relativo ao .crx-lightbox-content */
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(0, 0, 0, 0.6); /* Overlay escuro */
+    z-index: 1002; /* Acima do textarea, abaixo do botão de fechar */
+    display: none; /* Começa oculto */
+    align-items: center;
+    justify-content: center;
+    border-radius: 8px; /* Para cobrir o conteúdo do lightbox perfeitamente */
+}
+
+.crx-edit-confirm-box {
+    background-color: white;
+    padding: 25px;
+    border-radius: 10px;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+    text-align: center;
+    width: 90%;
+    max-width: 300px;
+}
+
+.crx-edit-confirm-box p {
+    font-size: 16px;
+    color: #333;
+    margin-top: 0;
+    margin-bottom: 20px;
+    align-self: center; /* Centraliza o <p> */
+}
+
+.crx-edit-confirm-box .crx-button {
+    width: 100%;
+    margin-top: 10px;
+}
+/* --- FIM Estilos de Confirmação --- */
+
+/* --- NOVO: Estilos do Modal de Refinamento IA --- */
+.crx-ai-refine-box {
+    background-color: white;
+    padding: 25px;
+    border-radius: 10px;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+    text-align: center;
+    width: 90%;
+    max-width: 400px; /* Um pouco maior para o prompt */
+    display: flex;
+    flex-direction: column;
+    gap: 10px; /* Espaço entre os elementos */
+    z-index: 1003; /* Garante que fique acima do overlay de edição */
+}
+
+.crx-ai-refine-box p {
+    font-size: 16px;
+    color: #333;
+    margin-top: 0;
+    margin-bottom: 5px; /* Menos espaço */
+    align-self: center; /* Centraliza */
+}
+
+#crx-ai-refine-prompt {
+    width: 100%;
+    min-height: 80px;
+    max-height: 150px;
+    padding: 10px;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+    font-size: 14px;
+    line-height: 1.4;
+    resize: vertical;
+    box-sizing: border-box;
+    color: #333;
+}
+
+#crx-ai-refine-prompt:focus {
+    border-color: #0d6efd;
+    box-shadow: 0 0 0 2px rgba(13, 110, 253, 0.2);
+    outline: none;
+}
+
+
+.crx-ai-refine-box .crx-button {
+    width: 100%;
+    margin-top: 5px; /* Menos espaço */
+}
+/* --- FIM Estilos de Refinamento --- */
+
+
 /* --- FIM Estilos do Lightbox --- */
 

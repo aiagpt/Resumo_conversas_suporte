@@ -31,6 +31,11 @@ function playNotificationSound() {
 // --- Lógica de UI (Genérica - Usada por ambos) ---
 // (Definida primeiro para estar disponível para os handlers)
 function createModalUI() {
+    // --- Variáveis de estado para o editor do Lightbox ---
+    let originalLightboxText = "";
+    let hasMadeEdits = false;
+    // --- FIM Variáveis de estado ---
+
     const modalContainer = document.createElement('div');
     modalContainer.id = 'crx-modal-container';
 
@@ -58,7 +63,37 @@ function createModalUI() {
     lightboxContainer.innerHTML = `
         <div class="crx-lightbox-content">
             <button id="crx-lightbox-close">&times;</button>
-            <textarea id="crx-lightbox-textarea" readonly></textarea>
+            <textarea id="crx-lightbox-textarea"></textarea> <!-- 'readonly' REMOVIDO -->
+            
+            <!-- NOVO: Barra de Botões do Lightbox -->
+            <div class="crx-lightbox-button-bar">
+                <button id="crx-ai-fix-button" class="crx-button">✨ Consertar com IA</button>
+            </div>
+
+            <!-- NOVO: Modal de Confirmação de Edição (Dentro do Lightbox) -->
+            <div id="crx-edit-confirm-modal" class="crx-edit-confirm-overlay">
+                <div class="crx-edit-confirm-box">
+                    <p>Deseja aplicar as alterações feitas no texto?</p>
+                    <button id="crx-confirm-apply" class="crx-button">Aplicar</button>
+                    <button id="crx-confirm-cancel" class="crx-button crx-button-secondary">Cancelar (Perder)</button>
+                </div>
+            </div>
+            <!-- FIM Modal de Confirmação -->
+
+            <!-- NOVO: Modal de Refinamento IA -->
+            <div id="crx-ai-refine-modal" class="crx-edit-confirm-overlay">
+                <div class="crx-ai-refine-box">
+                    <p>O que deseja alterar no resumo?</p>
+                    <textarea id="crx-ai-refine-prompt" placeholder="Ex: 'Seja mais formal', 'Resuma em 3 tópicos', 'Corrija a gramática'..."></textarea>
+                    <button id="crx-ai-refine-submit" class="crx-button">
+                        <span class="crx-button-text">Refinar</span>
+                        <div class="crx-spinner"></div>
+                    </button>
+                    <button id="crx-ai-refine-cancel" class="crx-button crx-button-secondary">Cancelar</button>
+                </div>
+            </div>
+            <!-- FIM Modal de Refinamento IA -->
+
         </div>
     `;
     modalContainer.appendChild(lightboxContainer); // Adiciona ao modal principal
@@ -72,6 +107,19 @@ function createModalUI() {
     // --- NOVO: Referências do Lightbox ---
     const lightboxTextarea = lightboxContainer.querySelector('#crx-lightbox-textarea');
     const lightboxCloseButton = lightboxContainer.querySelector('#crx-lightbox-close');
+
+    // --- NOVO: Referências do Modal de Confirmação ---
+    const editConfirmModal = lightboxContainer.querySelector('#crx-edit-confirm-modal');
+    const confirmApplyButton = lightboxContainer.querySelector('#crx-confirm-apply');
+    const confirmCancelButton = lightboxContainer.querySelector('#crx-confirm-cancel');
+
+    // --- NOVO: Referências do Modal de Refinamento IA ---
+    const aiFixButton = lightboxContainer.querySelector('#crx-ai-fix-button');
+    const aiRefineModal = lightboxContainer.querySelector('#crx-ai-refine-modal');
+    const aiRefinePrompt = lightboxContainer.querySelector('#crx-ai-refine-prompt');
+    const aiRefineSubmit = lightboxContainer.querySelector('#crx-ai-refine-submit');
+    const aiRefineCancel = lightboxContainer.querySelector('#crx-ai-refine-cancel');
+
 
     copyButton.addEventListener('click', () => {
         reportTextarea.select();
@@ -101,24 +149,122 @@ function createModalUI() {
         }
     });
 
-    // --- NOVO: Listeners para abrir e fechar o Lightbox ---
+    // --- ATUALIZADO: Listeners para abrir o Lightbox ---
     reportTextarea.addEventListener('click', () => {
-        // Preenche o lightbox com o texto atual e o exibe
-        lightboxTextarea.value = reportTextarea.value;
+        // Armazena o texto original e reseta o estado
+        originalLightboxText = reportTextarea.value;
+        lightboxTextarea.value = originalLightboxText;
+        hasMadeEdits = false;
+        
+        // Limpa os modais (caso tenham ficado abertos)
+        editConfirmModal.style.display = 'none';
+        aiRefineModal.style.display = 'none';
+        
+        // Exibe o lightbox
         lightboxContainer.style.display = 'flex';
     });
 
+    // --- NOVO: Listener para Rastrear Edições ---
+    lightboxTextarea.addEventListener('input', () => {
+        hasMadeEdits = true;
+    });
+
+
+    // --- ATUALIZADO: Listener para fechar o Lightbox (Botão 'X') ---
     lightboxCloseButton.addEventListener('click', () => {
-        // Esconde o lightbox
+        // Verifica se o texto foi alterado
+        const currentText = lightboxTextarea.value;
+        if (hasMadeEdits && currentText !== originalLightboxText) {
+            // Se mudou, mostra confirmação
+            editConfirmModal.style.display = 'flex';
+        } else {
+            // Se não mudou, apenas fecha
+            lightboxContainer.style.display = 'none';
+        }
+    });
+
+    // --- NOVO: Listeners do Modal de Confirmação ---
+    confirmApplyButton.addEventListener('click', () => {
+        // Aplica o texto editado ao textarea principal
+        reportTextarea.value = lightboxTextarea.value;
+        
+        // Esconde ambos os modais
+        editConfirmModal.style.display = 'none';
+        lightboxContainer.style.display = 'none';
+    });
+
+    confirmCancelButton.addEventListener('click', () => {
+        // Apenas esconde os modais, perdendo as alterações
+        editConfirmModal.style.display = 'none';
         lightboxContainer.style.display = 'none';
     });
     // --- FIM Listeners Lightbox ---
+
+    // --- NOVO: Listeners do Modal de Refinamento IA ---
+    aiFixButton.addEventListener('click', () => {
+        aiRefinePrompt.value = ''; // Limpa o prompt anterior
+        aiRefinePrompt.style.color = '#333'; // Reseta cor de erro
+        aiRefineModal.style.display = 'flex'; // Mostra o modal de refinamento
+    });
+
+    aiRefineCancel.addEventListener('click', () => {
+        aiRefineModal.style.display = 'none'; // Esconde o modal de refinamento
+    });
+
+    aiRefineSubmit.addEventListener('click', () => {
+        const instruction = aiRefinePrompt.value;
+        const currentSummary = lightboxTextarea.value;
+
+        if (instruction.trim() === '') {
+            aiRefinePrompt.style.color = 'red';
+            aiRefinePrompt.value = 'Por favor, insira uma instrução.';
+            return;
+        }
+
+        aiRefineSubmit.classList.add('loading');
+        aiRefineSubmit.disabled = true;
+        aiRefineCancel.disabled = true;
+
+        chrome.runtime.sendMessage(
+            { 
+                command: 'refineSummary', 
+                summary: currentSummary, 
+                instruction: instruction 
+            }, 
+            (response) => {
+                aiRefineSubmit.classList.remove('loading');
+                aiRefineSubmit.disabled = false;
+                aiRefineCancel.disabled = false;
+
+                if (response && response.refinedSummary) {
+                    lightboxTextarea.value = response.refinedSummary; // Atualiza o texto
+                    hasMadeEdits = true; // Marca que foi editado
+                    aiRefineModal.style.display = 'none'; // Fecha o modal de refinamento
+                } else if (response && response.error) {
+                    console.error('[ContentScript] Erro ao refinar:', response.error);
+                    aiRefinePrompt.style.color = 'red';
+                    aiRefinePrompt.value = `Erro: ${response.error}`;
+                } else {
+                    console.error('[ContentScript] Resposta inválida do refinamento:', response);
+                    aiRefinePrompt.style.color = 'red';
+                    aiRefinePrompt.value = 'Erro: Resposta inválida do background.';
+                }
+            }
+        );
+    });
+    // --- FIM Listeners de Refinamento ---
+
 
     // Retorna as visualizações (embora agora vamos usar IDs)
     return { modalContainer, view1, view2, viewConfirm, reportTextarea };
 }
 
 function createView1() {
+// ... (O resto do ficheiro content.js permanece inalterado) ...
+// ... (createView1, createView2, createConfirmView) ...
+// ... (VerdanaDeskHandler, GlpiHandler) ...
+// ... (onMutation, detectAndSelectHandler, setupObserver) ...
+// ... (chrome.runtime.onMessage, chrome.storage.sync.get) ...
     const view = document.createElement('div');
     view.className = 'crx-view';
     // --- ATUALIZAÇÃO: Adicionado ID ---
