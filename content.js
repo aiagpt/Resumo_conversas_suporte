@@ -304,11 +304,11 @@ function createConfirmView() {
         <p>A conversa contém dados sensíveis (senhas, CPFs, cartões, etc.)?</p>
         <div class="crx-confirm-buttons">
             <button id="crx-confirm-yes" class="crx-button crx-button-secondary">
-                <span class="crx-button-text">Sim (Usar IA Local)</span>
+                <span class="crx-button-text">Sim</span>
                 <div class="crx-spinner"></div>
             </button>
             <button id="crx-confirm-no" class="crx-button">
-                <span class="crx-button-text">Não (Usar IA Nuvem)</span>
+                <span class="crx-button-text">Não</span>
                 <div class="crx-spinner"></div>
             </button>
         </div>
