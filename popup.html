@@ -20,7 +20,7 @@
     <!-- NOVO: Container do Jogo (Easter Egg) -->
     <div class="container" id="game-container" style="display: none;">
         <h1>Jogo da Velha</h1>
-        <p>Você é 'X'. Tente vencer a IA ('O').</p>
+        <p id="game-status">Clique para começar</p>
         <div id="game-board">
             <div class="cell" data-index="0"></div>
             <div class="cell" data-index="1"></div>
@@ -32,7 +32,17 @@
             <div class="cell" data-index="7"></div>
             <div class="cell" data-index="8"></div>
         </div>
-        <p id="game-status">Clique para começar</p>
+        
+        <!-- NOVO: Seletor de Oponente -->
+        <div class="opponent-selector">
+            <span id="opponent-label-gemini">IA (Normal)</span>
+            <label class="switch small-switch">
+                <input type="checkbox" id="opponent-switch">
+                <span class="slider"></span>
+            </label>
+            <span id="opponent-label-minimax">IA (Invencível)</span>
+        </div>
+
         <div class="game-buttons">
             <button id="restart-button" class="game-button">Reiniciar</button>
             <button id="exit-button" class="game-button secondary">Sair</button>

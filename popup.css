@@ -18,30 +18,22 @@ h1 {
     margin: 5px 0 10px 0;
 }
 
-/* --- ATUALIZAÇÃO: Removido cursor do H1 --- */
-#main-title {
-    cursor: default;
-    user-select: none; /* Impede seleção de texto */
-}
-
 p {
     font-size: 14px;
     color: #555;
     margin-bottom: 15px;
 }
 
-/* --- ATUALIZAÇÃO: Estilo do trigger "ou" para parecer normal --- */
+/* --- Lógica do Easter Egg --- */
 #easter-egg-trigger {
-    cursor: inherit; /* Herda o cursor normal de texto */
-    font-weight: inherit; /* Herda o peso normal do parágrafo */
-    color: inherit; /* Herda a cor normal do parágrafo */
-    user-select: none;
+    /* Removido o estilo para parecer invisível, exceto o cursor */
+    cursor: pointer;
+    /* text-decoration: underline; */
+    /* font-weight: bold; */
+    /* color: #00875f; */
 }
-#easter-egg-trigger:hover {
-    text-decoration: none; /* Remove o sublinhado ao passar o rato */
-}
-/* --- FIM --- */
 
+/* --- Estilos do Toggle Principal --- */
 .switch {
     position: relative;
     display: inline-block;
@@ -91,68 +83,100 @@ input:checked + .slider:before {
     transform: translateX(26px);
 }
 
-/* --- NOVO: Estilos do Jogo da Velha --- */
+/* --- Estilos do Jogo da Velha (Easter Egg) --- */
 #game-board {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    grid-template-rows: repeat(3, 1fr);
-    width: 210px;
-    height: 210px;
-    border: 2px solid #333;
+    grid-template-columns: repeat(3, 70px);
+    grid-template-rows: repeat(3, 70px);
+    gap: 5px;
     margin-bottom: 15px;
 }
 
 .cell {
     width: 70px;
     height: 70px;
+    background-color: #eee;
     border: 1px solid #ccc;
-    box-sizing: border-box; /* Garante que a borda não aumente o tamanho */
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 40px;
+    font-size: 2.5rem;
     font-weight: bold;
     cursor: pointer;
-    user-select: none;
-    transition: background-color 0.2s;
+    transition: background-color 0.2s, opacity 0.5s; /* <-- NOVO: Adiciona transição de opacidade */
 }
 
 .cell:hover {
-    background-color: #f0f0f0;
+    background-color: #e0e0e0;
 }
 
-/* Cores para X e O */
-.cell.x {
-    color: #00875f; /* Verde */
+/* Cores dos jogadores */
+.cell.X {
+    color: #00875f; /* Verde (Humano) */
+    cursor: not-allowed;
 }
-.cell.o {
-    color: #c94c4c; /* Vermelho */
+.cell.O {
+    color: #c9302c; /* Vermelho (IA) */
+    cursor: not-allowed;
 }
+
+/* --- NOVO: Animação de Fim de Jogo --- */
+@keyframes pulse {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.1); }
+    100% { transform: scale(1); }
+}
+
+/* Classe de pulsação para a linha vencedora */
+.cell.win {
+    animation: pulse 0.4s 3; /* Pulsa 3 vezes */
+}
+
+/* Fundo verde para 'X' (Humano) vencedor */
+.cell.win.X {
+    background-color: #d4edda; /* Verde claro */
+}
+
+/* Fundo vermelho para 'O' (IA) vencedor */
+.cell.win.O {
+    background-color: #f8d7da; /* Vermelho claro */
+}
+
+/* Estilo de empate (esbate todas as células) */
+.cell.draw {
+    opacity: 0.6;
+}
+/* --- FIM Animação --- */
+
 
 #game-status {
+    font-size: 14px;
     font-weight: bold;
-    height: 20px; /* Altura fixa para não "saltar" */
+    height: 20px; /* Altura fixa para evitar saltos */
+    color: #333;
 }
 
 .game-buttons {
     display: flex;
     justify-content: space-between;
     width: 100%;
-    gap: 10px;
+    margin-top: 10px;
 }
 
 .game-button {
-    flex: 1;
-    padding: 8px;
-    font-size: 14px;
-    font-weight: bold;
+    padding: 8px 12px;
     border: none;
     border-radius: 6px;
-    cursor: pointer;
-    transition: background-color 0.2s;
     background-color: #00875f;
     color: white;
+    font-size: 14px;
+    font-weight: bold;
+    cursor: pointer;
+    transition: background-color 0.2s;
+    flex: 1; /* Ocupa metade do espaço */
+    margin: 0 5px;
 }
+
 .game-button:hover {
     background-color: #006a4c;
 }
@@ -162,5 +186,41 @@ input:checked + .slider:before {
 }
 .game-button.secondary:hover {
     background-color: #5a6268;
+}
+
+/* --- NOVO: Estilos do Seletor de Oponente --- */
+.opponent-selector {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 5px 0 10px 0;
+    gap: 8px;
+    font-size: 12px;
+}
+
+.opponent-selector span {
+    color: #888;
+    transition: color 0.2s, font-weight 0.2s;
+}
+
+/* Estilo para o label ativo */
+#opponent-label-gemini {
+    font-weight: bold;
+    color: #333;
+}
+
+/* Versão pequena do switch */
+.small-switch {
+    width: 40px;
+    height: 22px;
+}
+.small-switch .slider:before {
+    height: 16px;
+    width: 16px;
+    left: 3px;
+    bottom: 3px;
+}
+.small-switch input:checked + .slider:before {
+    transform: translateX(18px);
 }
 

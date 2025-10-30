@@ -1,8 +1,7 @@
 document.addEventListener('DOMContentLoaded', () => {
+    // --- Lógica Principal (Ativar/Desativar) ---
     const toggleSwitch = document.getElementById('toggle-switch');
     const statusText = document.getElementById('status-text');
-
-    // --- Lógica do Toggle (Existente) ---
 
     // Carrega o estado salvo quando o popup abre
     chrome.storage.sync.get(['extensionEnabled'], (result) => {
@@ -37,186 +36,291 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // --- LÓGICA DO EASTER EGG (JOGO DA VELHA) ---
-    const mainContainer = document.getElementById('main-container');
+    // --- Lógica do Easter Egg (Jogo da Velha) ---
+    const mainContainer = document.querySelector('.container');
     const gameContainer = document.getElementById('game-container');
-    const trigger = document.getElementById('easter-egg-trigger'); // O "ou"
-
-    // Elementos do Jogo
-    const gameBoard = document.getElementById('game-board');
-    const cells = document.querySelectorAll('.cell');
-    const gameStatus = document.getElementById('game-status');
-    const restartButton = document.getElementById('restart-button');
+    const easterEggTrigger = document.getElementById('easter-egg-trigger');
     const exitButton = document.getElementById('exit-button');
+    const restartButton = document.getElementById('restart-button');
+    const gameStatus = document.getElementById('game-status');
+    const cells = document.querySelectorAll('.cell');
+    const opponentSwitch = document.getElementById('opponent-switch');
+    const labelGemini = document.getElementById('opponent-label-gemini');
+    const labelMinimax = document.getElementById('opponent-label-minimax');
 
-    let board = ['', '', '', '', '', '', '', '', ''];
-    let currentPlayer = 'X';
+    const humanPlayer = 'X';
+    const aiPlayer = 'O';
+    let board = Array(9).fill('');
     let gameActive = true;
-    let gameHistory = []; // Histórico de jogadas
+    let currentPlayer = humanPlayer;
+    let currentOpponent = 'gemini'; // 'gemini' ou 'minimax'
+    let moveHistory = []; // Para o prompt do Gemini
 
-    // --- Lógica de Ativação ---
-    trigger.addEventListener('click', () => {
+    // --- Lógica de Ativação do Easter Egg ---
+    easterEggTrigger.addEventListener('click', () => {
         mainContainer.style.display = 'none';
         gameContainer.style.display = 'flex';
         startGame();
     });
+
+    // --- Lógica de Controlo do Jogo ---
+    opponentSwitch.addEventListener('change', () => {
+        currentOpponent = opponentSwitch.checked ? 'minimax' : 'gemini';
+        updateOpponentLabels();
+    });
+    
+    function updateOpponentLabels() {
+        if (currentOpponent === 'minimax') {
+            labelGemini.style.fontWeight = 'normal';
+            labelMinimax.style.fontWeight = 'bold';
+            labelMinimax.style.color = '#333';
+            labelGemini.style.color = '#888';
+            // Atualiza o status *apenas* se o jogo não estiver ativo (para não sobrescrever "Vitória")
+            if (gameActive) gameStatus.textContent = "IA Invencível ('O') ativada.";
+        } else {
+            labelGemini.style.fontWeight = 'bold';
+            labelMinimax.style.fontWeight = 'normal';
+            labelGemini.style.color = '#333';
+            labelMinimax.style.color = '#888';
+            if (gameActive) gameStatus.textContent = "IA Normal ('O') ativada.";
+        }
+    }
+
+    function startGame() {
+        board.fill('');
+        cells.forEach(cell => {
+            cell.textContent = '';
+            cell.classList.remove('X', 'O', 'win', 'draw'); // <-- NOVO: Limpa classes de animação
+        });
+        gameActive = true;
+        moveHistory = [];
+        currentOpponent = opponentSwitch.checked ? 'minimax' : 'gemini';
+        updateOpponentLabels(); // Define os labels *antes* de definir o status de início
+
+        // Sorteia quem começa
+        if (Math.random() < 0.5) {
+            currentPlayer = humanPlayer;
+            gameStatus.textContent = "Você ('X') começa.";
+        } else {
+            currentPlayer = aiPlayer;
+            gameStatus.textContent = "A IA ('O') começa.";
+            // Adiciona um pequeno atraso para a primeira jogada da IA
+            setTimeout(makeAIMove, 500); 
+        }
+    }
+
+    function handleCellClick(e, index) {
+        const clickedIndex = index !== null ? index : parseInt(e.target.dataset.index);
+
+        if (board[clickedIndex] !== '' || !gameActive || currentPlayer !== humanPlayer) {
+            return;
+        }
+
+        // Jogada do Humano
+        updateBoard(clickedIndex, humanPlayer);
+        moveHistory.push({ player: humanPlayer, move: clickedIndex });
+
+        if (checkGameEnd()) return;
+
+        // Próximo é a IA
+        currentPlayer = aiPlayer;
+        gameStatus.textContent = "IA ('O') está a pensar...";
+        setTimeout(makeAIMove, 500); // Dá um tempo para o jogador ver a sua jogada
+    }
+
+    // --- ATUALIZADO: Roteador de Jogada da IA ---
+    function makeAIMove() {
+        if (!gameActive) return;
+
+        if (currentOpponent === 'gemini') {
+            // --- MÉTODO 1: Chamar a IA Gemini (Nuvem) ---
+            chrome.runtime.sendMessage(
+                { command: 'getAIMove', board: board, history: moveHistory },
+                (response) => {
+                    // Verifica se o canal de comunicação ainda existe
+                    if (chrome.runtime.lastError) {
+                        console.error("Erro de comunicação (popup.js):", chrome.runtime.lastError.message);
+                        gameStatus.textContent = "Erro: IA adormeceu. Reinicie.";
+                        gameActive = false; // Para o jogo
+                        return;
+                    }
+                    
+                    if (response.error) {
+                        console.error("Erro da IA (Gemini):", response.error);
+                        gameStatus.textContent = "IA falhou. Tente o Minimax.";
+                        // Fallback: se o Gemini falhar, deixa o humano jogar
+                        currentPlayer = humanPlayer;
+                        return;
+                    }
+                    
+                    if (board[response.move] === '') {
+                        updateBoard(response.move, aiPlayer);
+                        moveHistory.push({ player: aiPlayer, move: response.move });
+                        if (checkGameEnd()) return;
+                        currentPlayer = humanPlayer;
+                        gameStatus.textContent = "Sua vez ('X').";
+                    } else {
+                        console.warn("IA (Gemini) tentou jogada inválida, usando fallback.");
+                        makeRandomMove();
+                    }
+                }
+            );
+        } else {
+            // --- MÉTODO 2: Chamar a IA Minimax (Local) ---
+            const bestMove = findBestMove(board);
+            if (bestMove !== -1) {
+                updateBoard(bestMove, aiPlayer);
+                moveHistory.push({ player: aiPlayer, move: bestMove });
+                if (checkGameEnd()) return;
+                currentPlayer = humanPlayer;
+                gameStatus.textContent = "Sua vez ('X').";
+            }
+        }
+    }
+
+    function makeRandomMove() {
+        if (!gameActive) return;
+        const availableCells = board
+            .map((cell, index) => (cell === '' ? index : null))
+            .filter(index => index !== null);
+        
+        if (availableCells.length > 0) {
+            const move = availableCells[Math.floor(Math.random() * availableCells.length)];
+            updateBoard(move, aiPlayer);
+            moveHistory.push({ player: aiPlayer, move: move });
+            if (checkGameEnd()) return;
+            currentPlayer = humanPlayer;
+            gameStatus.textContent = "Sua vez ('X').";
+        }
+    }
+
+    function updateBoard(index, player) {
+        board[index] = player;
+        cells[index].textContent = player;
+        cells[index].classList.add(player);
+    }
+
+    // --- NOVO: Função para animar o fim do jogo ---
+    function animateEndGame(pattern, winner) {
+        for (const index of pattern) {
+            cells[index].classList.add('win'); // Adiciona classe de pulsação
+            if (winner === 'T') {
+                cells[index].classList.add('draw'); // Adiciona classe de empate (fade)
+            }
+        }
+    }
+
+    // --- ATUALIZADO: Lógica de Fim de Jogo ---
+    function checkGameEnd() {
+        const result = checkWinner(board); // result é { winner, pattern } ou null
+        
+        if (result) {
+            gameActive = false;
+            gameStatus.textContent = result.winner === 'T' ? 'Empate!' : `Fim de Jogo: '${result.winner}' venceu!`;
+            
+            // --- NOVO: Chama a animação ---
+            animateEndGame(result.pattern, result.winner);
+
+            // --- NOVO: Reinicia automaticamente após 2 segundos ---
+            setTimeout(startGame, 2000); 
+            
+            return true;
+        }
+        return false;
+    }
+
+    // --- ATUALIZADO: checkWinner agora retorna um objeto com o padrão vencedor ---
+    function checkWinner(currentBoard) {
+        const winPatterns = [
+            [0, 1, 2], [3, 4, 5], [6, 7, 8], // Linhas
+            [0, 3, 6], [1, 4, 7], [2, 5, 8], // Colunas
+            [0, 4, 8], [2, 4, 6]  // Diagonais
+        ];
+
+        for (const pattern of winPatterns) {
+            const [a, b, c] = pattern;
+            if (currentBoard[a] && currentBoard[a] === currentBoard[b] && currentBoard[a] === currentBoard[c]) {
+                return { winner: currentBoard[a], pattern: pattern }; // <-- Objeto de vitória
+            }
+        }
+
+        if (currentBoard.every(cell => cell !== '')) {
+            // Retorna todas as células para a animação de empate
+            return { winner: 'T', pattern: [0, 1, 2, 3, 4, 5, 6, 7, 8] }; // <-- Objeto de empate
+        }
+
+        return null; // Jogo continua
+    }
+    
+    // --- NOVO: Algoritmo Minimax ---
+    
+    // Encontra a melhor jogada
+    function findBestMove(board) {
+        let bestScore = -Infinity;
+        let bestMove = -1;
+
+        for (let i = 0; i < board.length; i++) {
+            if (board[i] === '') { // Se a célula estiver vazia
+                board[i] = aiPlayer; // Tenta a jogada
+                let score = minimax(board, 0, false); // Calcula o score para esta jogada
+                board[i] = ''; // Desfaz a jogada
+                
+                if (score > bestScore) {
+                    bestScore = score;
+                    bestMove = i;
+                }
+            }
+        }
+        return bestMove;
+    }
+
+    // Função Minimax recursiva
+    function minimax(currentBoard, depth, isMaximizing) {
+        const result = checkWinner(currentBoard); // <-- ATUALIZADO: Usa o novo checkWinner
+        if (result) {
+            if (result.winner === aiPlayer) return 10 - depth;
+            if (result.winner === humanPlayer) return depth - 10;
+            if (result.winner === 'T') return 0;
+        }
+
+        if (isMaximizing) { // Vez da IA (quer maximizar o score)
+            let bestScore = -Infinity;
+            for (let i = 0; i < currentBoard.length; i++) {
+                if (currentBoard[i] === '') {
+                    currentBoard[i] = aiPlayer;
+                    bestScore = Math.max(bestScore, minimax(currentBoard, depth + 1, false));
+                    currentBoard[i] = '';
+                }
+            }
+            return bestScore;
+        } else { // Vez do Humano (quer minimizar o score da IA)
+            let bestScore = Infinity;
+            for (let i = 0; i < currentBoard.length; i++) {
+                if (currentBoard[i] === '') {
+                    currentBoard[i] = humanPlayer;
+                    bestScore = Math.min(bestScore, minimax(currentBoard, depth + 1, true));
+                    currentBoard[i] = '';
+                }
+            }
+            return bestScore;
+        }
+    }
+    // --- FIM Minimax ---
+    
+    // --- Listeners dos Botões ---
+    cells.forEach((cell, index) => {
+        cell.addEventListener('click', (e) => handleCellClick(e, index));
+    });
+
+    startGame();
 
     // --- Lógica de Saída ---
     exitButton.addEventListener('click', () => {
         gameContainer.style.display = 'none';
         mainContainer.style.display = 'flex';
     });
-
+    
     // --- Lógica de Reinício ---
     restartButton.addEventListener('click', startGame);
-
-    // --- Lógica do Tabuleiro ---
-    cells.forEach(cell => {
-        cell.addEventListener('click', handleCellClick);
-    });
-
-    function handleCellClick(event) {
-        const clickedCell = event.target;
-        const clickedCellIndex = parseInt(clickedCell.getAttribute('data-index'));
-
-        if (board[clickedCellIndex] !== '' || !gameActive || currentPlayer === 'O') {
-            return; // Ignora clique se a célula estiver ocupada, jogo inativo, ou for a vez da IA
-        }
-
-        makeMove(clickedCellIndex, 'X');
-
-        if (checkWinner()) {
-            endGame(false);
-        } else if (board.every(cell => cell !== '')) {
-            endGame(true); // Empate
-        } else {
-            currentPlayer = 'O';
-            updateGameStatus("A IA (O) está a pensar...");
-            gameBoard.classList.add('disabled'); // Desabilita o tabuleiro
-            
-            // Adiciona um pequeno atraso para a jogada da IA
-            setTimeout(aiMove, 500);
-        }
-    }
-
-    // --- ATUALIZADO: Início do Jogo (com Sorteio) ---
-    function startGame() {
-        board = ['', '', '', '', '', '', '', '', ''];
-        gameActive = true;
-        gameHistory = [];
-        cells.forEach(cell => {
-            cell.textContent = '';
-            cell.classList.remove('x', 'o');
-        });
-        gameBoard.classList.remove('disabled');
-
-        // --- NOVA LÓGICA DE SORTEIO ---
-        const startingPlayer = Math.random() < 0.5 ? 'X' : 'O';
-        currentPlayer = startingPlayer;
-
-        if (startingPlayer === 'X') {
-            updateGameStatus("É a sua vez (X)");
-        } else {
-            // A IA começa!
-            updateGameStatus("A IA (O) começa...");
-            gameBoard.classList.add('disabled'); // Desabilita o tabuleiro
-            // Adiciona um pequeno atraso para o jogador perceber
-            setTimeout(aiMove, 500); // aiMove é a função que chama o background.js
-        }
-        // --- FIM DA LÓGICA ---
-    }
-
-    function makeMove(index, player) {
-        board[index] = player;
-        cells[index].textContent = player;
-        cells[index].classList.add(player.toLowerCase());
-        gameHistory.push({ player: player, move: index });
-    }
-
-    function updateGameStatus(message) {
-        gameStatus.textContent = message;
-    }
-
-    function aiMove() {
-        // Envia o estado atual para o background script
-        chrome.runtime.sendMessage(
-            {
-                command: 'getAIMove',
-                board: board,
-                history: gameHistory
-            },
-            (response) => {
-                if (chrome.runtime.lastError) {
-                    console.error(chrome.runtime.lastError.message);
-                    updateGameStatus("Erro na IA. Tente reiniciar.");
-                    gameBoard.classList.remove('disabled');
-                    return;
-                }
-
-                if (response.error) {
-                    console.error(response.error);
-                    updateGameStatus("Erro na IA. Tente reiniciar.");
-                    gameBoard.classList.remove('disabled');
-                    return;
-                }
-
-                if (response.move !== undefined && board[response.move] === '') {
-                    const aiMoveIndex = response.move;
-                    makeMove(aiMoveIndex, 'O');
-
-                    if (checkWinner()) {
-                        endGame(false);
-                    } else if (board.every(cell => cell !== '')) {
-                        endGame(true); // Empate
-                    } else {
-                        currentPlayer = 'X';
-                        updateGameStatus("É a sua vez (X)");
-                        gameBoard.classList.remove('disabled'); // Reabilita o tabuleiro
-                    }
-                } else {
-                    // Fallback (se a IA falhar ou sugerir jogada inválida)
-                    console.warn("IA sugeriu jogada inválida ou indefinida. Procurando fallback.");
-                    const availableMoves = board.map((cell, i) => cell === '' ? i : null).filter(i => i !== null);
-                    if (availableMoves.length > 0) {
-                        makeMove(availableMoves[0], 'O');
-                        currentPlayer = 'X';
-                        updateGameStatus("É a sua vez (X)");
-                        gameBoard.classList.remove('disabled');
-                    } else {
-                        endGame(true); // Empate
-                    }
-                }
-            }
-        );
-    }
-
-    function checkWinner() {
-        const winningConditions = [
-            [0, 1, 2], [3, 4, 5], [6, 7, 8], // Linhas
-            [0, 3, 6], [1, 4, 7], [2, 5, 8], // Colunas
-            [0, 4, 8], [2, 4, 6]  // Diagonais
-        ];
-
-        for (let i = 0; i < winningConditions.length; i++) {
-            const [a, b, c] = winningConditions[i];
-            if (board[a] && board[a] === board[b] && board[a] === board[c]) {
-                gameWinner = board[a];
-                return true;
-            }
-        }
-        gameWinner = null;
-        return false;
-    }
-
-    function endGame(isDraw) {
-        gameActive = false;
-        gameBoard.classList.add('disabled'); // Desabilita o tabuleiro no fim
-
-        if (isDraw) {
-            updateGameStatus("Empate!");
-        } else {
-            updateGameStatus(`O Vencedor é ${gameWinner}!`);
-        }
-    }
 });
 
