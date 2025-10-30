@@ -18,11 +18,29 @@ h1 {
     margin: 5px 0 10px 0;
 }
 
+/* --- ATUALIZAÇÃO: Removido cursor do H1 --- */
+#main-title {
+    cursor: default;
+    user-select: none; /* Impede seleção de texto */
+}
+
 p {
     font-size: 14px;
     color: #555;
     margin-bottom: 15px;
 }
+
+/* --- ATUALIZAÇÃO: Estilo do trigger "ou" para parecer normal --- */
+#easter-egg-trigger {
+    cursor: inherit; /* Herda o cursor normal de texto */
+    font-weight: inherit; /* Herda o peso normal do parágrafo */
+    color: inherit; /* Herda a cor normal do parágrafo */
+    user-select: none;
+}
+#easter-egg-trigger:hover {
+    text-decoration: none; /* Remove o sublinhado ao passar o rato */
+}
+/* --- FIM --- */
 
 .switch {
     position: relative;
@@ -71,5 +89,78 @@ input:checked + .slider:before {
     -webkit-transform: translateX(26px);
     -ms-transform: translateX(26px);
     transform: translateX(26px);
+}
+
+/* --- NOVO: Estilos do Jogo da Velha --- */
+#game-board {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    grid-template-rows: repeat(3, 1fr);
+    width: 210px;
+    height: 210px;
+    border: 2px solid #333;
+    margin-bottom: 15px;
+}
+
+.cell {
+    width: 70px;
+    height: 70px;
+    border: 1px solid #ccc;
+    box-sizing: border-box; /* Garante que a borda não aumente o tamanho */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 40px;
+    font-weight: bold;
+    cursor: pointer;
+    user-select: none;
+    transition: background-color 0.2s;
+}
+
+.cell:hover {
+    background-color: #f0f0f0;
+}
+
+/* Cores para X e O */
+.cell.x {
+    color: #00875f; /* Verde */
+}
+.cell.o {
+    color: #c94c4c; /* Vermelho */
+}
+
+#game-status {
+    font-weight: bold;
+    height: 20px; /* Altura fixa para não "saltar" */
+}
+
+.game-buttons {
+    display: flex;
+    justify-content: space-between;
+    width: 100%;
+    gap: 10px;
+}
+
+.game-button {
+    flex: 1;
+    padding: 8px;
+    font-size: 14px;
+    font-weight: bold;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+    background-color: #00875f;
+    color: white;
+}
+.game-button:hover {
+    background-color: #006a4c;
+}
+
+.game-button.secondary {
+    background-color: #6c757d;
+}
+.game-button.secondary:hover {
+    background-color: #5a6268;
 }
 

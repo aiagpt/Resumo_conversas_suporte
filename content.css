@@ -275,6 +275,7 @@ body #crx-modal-container.glpi-modal-override {
     display: flex;
     flex-direction: column;
     padding: 25px; /* Espaço interno */
+    padding-bottom: 90px; /* Mais espaço em baixo para os botões */
 }
 
 #crx-lightbox-close {
@@ -287,7 +288,7 @@ body #crx-modal-container.glpi-modal-override {
     font-size: 20px; /* Tamanho do 'x' um pouco menor para caber no círculo */
     color: white; /* Cor do 'x' branco */
     cursor: pointer;
-    /* line-height: 1; --- REMOVIDA ESTA LINHA --- */
+    /* line-height: 1; <-- REMOVIDO: Conflitava com o flexbox */
     z-index: 1001;
     width: 30px; /* Tamanho do botão (largura) */
     height: 30px; /* Tamanho do botão (altura) */
@@ -317,135 +318,93 @@ body #crx-modal-container.glpi-modal-override {
     padding: 10px;
     font-family: monospace;
     font-size: 14px;
-    /* --- NOVO: Estilos para Edição --- */
-    background-color: #ffffff; /* Fundo branco para edição */
+    background-color: #f8f9fa;
     color: #212529;
-    /* --- FIM --- */
     white-space: pre-wrap;
     box-sizing: border-box; /* Garante que o padding não estoure */
+    margin-bottom: 0; /* Remove a margem de baixo padrão */
 }
-
-/* --- NOVO: Foco no Textarea Editável --- */
+/* Foco no textarea editável */
 #crx-modal-container #crx-lightbox-textarea:focus {
+    background-color: #fff;
     border-color: #00875f;
     box-shadow: 0 0 0 2px rgba(0, 135, 95, 0.2);
     outline: none;
 }
-
-/* --- NOVO: Barra de Botões do Lightbox --- */
-.crx-lightbox-button-bar {
-    display: flex;
-    justify-content: flex-end; /* Alinha o botão à direita */
-    width: 100%;
-    padding-top: 10px; /* Espaço do textarea */
-    gap: 10px; /* Espaço entre botões (se houver mais) */
-}
-
-#crx-ai-fix-button {
-    width: auto; /* Tamanho automático */
-    padding: 8px 12px;
-    font-size: 14px;
-    font-weight: 500;
-    background-color: #0d6efd; /* Azul para "Ação" */
-    gap: 6px; /* Espaço para o ícone */
-}
-
-#crx-ai-fix-button:hover:not(:disabled) {
-    background-color: #0b5ed7;
-}
-/* --- FIM Barra de Botões --- */
+/* --- FIM Estilos do Lightbox --- */
 
 
-/* --- NOVO: Estilos do Modal de Confirmação de Edição --- */
-
+/* --- NOVO: Modais de Confirmação (Dentro do Lightbox) --- */
 .crx-edit-confirm-overlay {
-    position: absolute; /* Relativo ao .crx-lightbox-content */
+    position: absolute;
     top: 0;
     left: 0;
     right: 0;
     bottom: 0;
-    background-color: rgba(0, 0, 0, 0.6); /* Overlay escuro */
-    z-index: 1002; /* Acima do textarea, abaixo do botão de fechar */
+    background-color: rgba(255, 255, 255, 0.9); /* Fundo branco translúcido */
+    z-index: 1010; /* Acima do textarea */
     display: none; /* Começa oculto */
     align-items: center;
     justify-content: center;
-    border-radius: 8px; /* Para cobrir o conteúdo do lightbox perfeitamente */
+    padding: 20px;
+    border-radius: 8px; /* Para bater com o .crx-lightbox-content */
 }
 
-.crx-edit-confirm-box {
-    background-color: white;
-    padding: 25px;
-    border-radius: 10px;
-    box-shadow: 0 4px 15px rgba(0,0,0,0.2);
-    text-align: center;
-    width: 90%;
-    max-width: 300px;
-}
-
-.crx-edit-confirm-box p {
-    font-size: 16px;
-    color: #333;
-    margin-top: 0;
-    margin-bottom: 20px;
-    align-self: center; /* Centraliza o <p> */
-}
-
-.crx-edit-confirm-box .crx-button {
-    width: 100%;
-    margin-top: 10px;
-}
-/* --- FIM Estilos de Confirmação --- */
-
-/* --- NOVO: Estilos do Modal de Refinamento IA --- */
+.crx-edit-confirm-box,
 .crx-ai-refine-box {
     background-color: white;
     padding: 25px;
-    border-radius: 10px;
-    box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+    border-radius: 8px;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+    border: 1px solid #ccc;
     text-align: center;
-    width: 90%;
-    max-width: 400px; /* Um pouco maior para o prompt */
-    display: flex;
-    flex-direction: column;
-    gap: 10px; /* Espaço entre os elementos */
-    z-index: 1003; /* Garante que fique acima do overlay de edição */
+    width: 100%;
+    max-width: 400px; /* Limita a largura do modal de confirmação */
 }
-
+.crx-edit-confirm-box p,
 .crx-ai-refine-box p {
     font-size: 16px;
     color: #333;
     margin-top: 0;
-    margin-bottom: 5px; /* Menos espaço */
-    align-self: center; /* Centraliza */
+    margin-bottom: 20px;
+    font-weight: 500;
+    align-self: center; /* Centraliza o <p> */
+}
+.crx-edit-confirm-box .crx-button {
+    margin: 5px;
+    width: calc(50% - 10px); /* Dois botões lado a lado */
 }
 
-#crx-ai-refine-prompt {
+/* --- NOVO: Estilos do Modal de Refinamento IA --- */
+.crx-ai-refine-box {
+    max-width: 450px; /* Um pouco mais largo para o textarea */
+}
+.crx-ai-refine-box textarea {
     width: 100%;
     min-height: 80px;
-    max-height: 150px;
-    padding: 10px;
-    border: 1px solid #ccc;
-    border-radius: 6px;
-    font-size: 14px;
-    line-height: 1.4;
-    resize: vertical;
-    box-sizing: border-box;
-    color: #333;
+    max-height: 150px; /* Limita o textarea do prompt */
+    margin-bottom: 15px; /* Tira a regra geral de #crx-modal-container textarea */
 }
-
-#crx-ai-refine-prompt:focus {
-    border-color: #0d6efd;
-    box-shadow: 0 0 0 2px rgba(13, 110, 253, 0.2);
-    outline: none;
-}
-
-
 .crx-ai-refine-box .crx-button {
-    width: 100%;
-    margin-top: 5px; /* Menos espaço */
+    margin: 5px;
+    width: calc(50% - 10px); /* Dois botões lado a lado */
 }
-/* --- FIM Estilos de Refinamento --- */
+/* --- FIM Modais de Confirmação --- */
 
-
-/* --- FIM Estilos do Lightbox --- */
+/* --- NOVO: Barra de Botões do Lightbox --- */
+.crx-lightbox-button-bar {
+    position: absolute;
+    bottom: 20px; /* Fica em baixo */
+    left: 20px;
+    right: 20px;
+    display: flex;
+    justify-content: space-between; /* Botões separados */
+    gap: 10px;
+}
+.crx-lightbox-button-bar .crx-button {
+    flex: 1; /* Ocupa o espaço dividido */
+    font-size: 15px; /* Fonte um pouco menor nos botões */
+    padding: 10px; /* Padding um pouco menor */
+}
+/* --- FIM Barra de Botões --- */
 

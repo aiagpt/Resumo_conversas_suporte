@@ -4,7 +4,8 @@ const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-
 
 // --- API do Ollama (Local) ---
 const OLLAMA_URL = "http://10.3.129.30:11434/api/generate";
-const OLLAMA_MODEL = "llama3:8b"; // O seu modelo local
+// --- ATUALIZAÇÃO: Revertido para o modelo mais seguro, pois o utilizador tem GPU ---
+const OLLAMA_MODEL = "llama3:8b"; // ATENÇÃO: Revertido para 'llama3:8b' (era 'gemma:2b')
 
 // --- NOVO: Constantes de Nova Tentativa ---
 const MAX_RETRIES = 3;
@@ -54,11 +55,11 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
 // --- Lógica de Mensagens ---
 // Ouve mensagens do content.js
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-    
+
     // Rota para a IA da Nuvem (Gemini) - Usada pelo "Não" e pelo "Passo 2"
     if (request.command === 'summarizeConversation') {
         console.log('[Background] Recebido pedido para resumir (Nuvem):');
-        
+
         callGeminiAPI(request.conversation)
             .then(summary => {
                 console.log('[Background] Resumo (Nuvem) recebido:', summary);
@@ -68,37 +69,39 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                 console.error('[Background] Erro final na API (Nuvem) após tentativas:', error);
                 sendResponse({ error: error.message }); // Envia a resposta de ERRO
             });
-        
-        return true; 
+
+        return true;
     }
-    
+
     // --- ATUALIZADO: ROTA para Anonimização Local (Ollama) - Usada pelo "Sim" (Passo 1) ---
     if (request.command === 'anonymizeConversation') {
-        console.log('[Background] Recebido pedido para ANONIMIZAR (Local):');
-        
+        console.log('[Background] Recebido pedido para ANONIMIZAR (Local via JSON):');
+
         startKeepAlive();
-        
-        callOllamaAPI_Anonymize(request.conversation)
+
+        // --- ATUALIZADO: Chama a nova função baseada em JSON ---
+        callOllamaAPI_Anonymize_IdentifyJson(request.conversation)
             .then(anonymizedText => {
-                console.log('[Background] Anonimização (Local) concluída.');
+                console.log('[Background] Anonimização (Local via JSON) concluída.');
                 sendResponse({ anonymizedText: anonymizedText });
             })
             .catch(error => {
-                console.error('[Background] Erro final na API (Anonimização):', error);
+                console.error('[Background] Erro final na API (Anonimização via JSON):', error);
                 sendResponse({ error: error.message });
             })
             .finally(() => {
                 stopKeepAlive();
             });
-            
+
         return true; // Manter canal aberto para resposta assíncrona
     }
 
-    // ROTA para Refinamento com IA (Sempre Nuvem/Gemini) - Intacta
+    // --- ATUALIZADO: ROTA para Refinamento com IA (Sempre Nuvem/Gemini) ---
     if (request.command === 'refineSummary') {
         console.log('[Background] Recebido pedido para refinar (Nuvem):', request.instruction);
-        
-        callGeminiToRefine(request.summary, request.instruction)
+
+        // Agora passamos o contexto da conversa para a função de refinamento
+        callGeminiToRefine(request.summary, request.instruction, request.conversationContext)
             .then(refinedSummary => {
                 console.log('[Background] Refinamento (Nuvem) recebido:', refinedSummary);
                 sendResponse({ refinedSummary: refinedSummary });
@@ -107,48 +110,80 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                 console.error('[Background] Erro final na API (Refinamento) após tentativas:', error);
                 sendResponse({ error: error.message });
             });
-            
+
         return true; // Manter canal aberto para resposta assíncrona
     }
     // --- FIM ROTA ---
+
+    // --- NOVO: ROTA PARA O JOGO DA VELHA (EASTER EGG) ---
+    if (request.command === 'getAIMove') {
+        console.log('[Background] Recebido pedido de jogada (Jogo da Velha)');
+        
+        callGeminiForTicTacToe(request.board, request.history)
+            .then(move => {
+                console.log('[Background] IA escolheu a jogada:', move);
+                sendResponse({ move: move });
+            })
+            .catch(error => {
+                console.error('[Background] Erro na IA do Jogo da Velha:', error);
+                sendResponse({ error: error.message });
+            });
+        
+        return true; // Resposta assíncrona
+    }
+    // --- FIM ROTA JOGO ---
 });
 
 
-// --- NOVO: PROMPT DE ANONIMIZAÇÃO ---
-const ANONYMIZE_PROMPT = `
-Sua tarefa é processar o <Texto> abaixo e anonimizar TODOS os dados sensíveis.
-Você DEVE substituir os dados sensíveis por tags genéricas (placeholders).
-Responda APENAS com o texto anonimizado. Não adicione NENHUM preâmbulo, cabeçalho ou texto extra.
+// --- ATUALIZADO: PROMPT DE ANONIMIZAÇÃO (JSON IDENTIFY) ---
+const ANONYMIZE_JSON_PROMPT = `
+Sua tarefa é analisar o <Texto> abaixo e IDENTIFICAR todos os dados sensíveis.
+Você NÃO DEVE modificar o texto.
+Sua resposta deve ser APENAS um array JSON válido. Nada antes, nada depois.
+O array JSON deve conter um objeto para CADA dado sensível encontrado.
+Cada objeto no array deve ter DUAS chaves:
+1.  "texto": Contendo a string EXATA do dado sensível encontrado no texto.
+2.  "tipo": Contendo a tag correspondente (em MAIÚSCULAS) para aquele tipo de dado.
 
-REGRAS DE SUBSTITUIÇÃO OBRIGATÓRIAS:
-- Telefones (ex: (27) 99999-8888, 999998888, 5527999998888, 27999998888): Substitua por [TELEFONE]
-- Emails (ex: nome@dominio.com): Substitua por [EMAIL]
-- CPFs (ex: 123.456.789-10, 12345678910): Substitua por [CPF]
-- CNPJs (ex: 12.345.678/0001-90, 12345678000190): Substitua por [CNPJ]
-- Senhas (ex: 'minha senha é 123mudar', 'password: abc@123', 'senha: Mudar@123'): Substitua por [SENHA]
-- Números de Cartão (ex: 4444 5555 6666 7777, 4444555566667777): Substitua por [CARTAO]
+Tipos de dados sensíveis e suas tags:
+- Telefones (ex: (27) 99999-8888, 999998888, etc.): Use a tag "TELEFONE"
+- Emails (ex: nome@dominio.com): Use a tag "EMAIL"
+- CPFs (ex: 123.456.789-10, 12345678910): Use a tag "CPF"
+- CNPJs (ex: 12.345.678/0001-90, etc.): Use a tag "CNPJ"
+- Senhas (qualquer coisa que pareça uma senha): Use a tag "SENHA"
+- Números de Cartão (ex: 4444 5555 6666 7777, etc.): Use a tag "CARTAO"
 
-REGRAS DE PRESERVAÇÃO OBRIGATÓRIAS:
-- MANTENHA nomes de pessoas (ex: Janine Dalmann, Pedro). NÃO OS REMOVA.
-- NÃO remova números de protocolo, IDs de ticket, números de versão ou IPs (ex: 192.168.0.1).
-- MANTENHA a formatação original, incluindo quebras de linha e estrutura.
+O que NÃO é sensível (NÃO inclua no JSON):
+- Nomes de pessoas (ex: Janine Dalmann, Pedro)
+- Datas e horas (ex: 2025-10-29, 14:30)
+- Números de protocolo, IDs de ticket, IPs, versões.
+
+Exemplo de Resposta JSON Válida:
+[
+  {"texto": "(27) 99999-8888", "tipo": "TELEFONE"},
+  {"texto": "123.456.789-10", "tipo": "CPF"},
+  {"texto": "minha senha é 123mudar", "tipo": "SENHA"}
+]
+
+Se NENHUM dado sensível for encontrado, retorne um array JSON vazio: []
 
 <Texto>
 {{conversation}}
 </Texto>
 `;
 
-// --- NOVA FUNÇÃO: Anonimização com IA Local (OLLAMA) ---
-async function callOllamaAPI_Anonymize(conversation) {
-    const prompt = ANONYMIZE_PROMPT.replace('{{conversation}}', conversation);
-    
+// --- NOVA FUNÇÃO: Anonimização (IA Identifica JSON, Código Remove) ---
+async function callOllamaAPI_Anonymize_IdentifyJson(conversation) {
+    const prompt = ANONYMIZE_JSON_PROMPT.replace('{{conversation}}', conversation);
+
     const payload = {
-        model: OLLAMA_MODEL, // 'llama3:8b'
+        model: OLLAMA_MODEL, // Ex: 'llama3:8b'
         prompt: prompt,
         stream: false
     };
 
     let lastError = null;
+    let modifiedConversation = conversation; // Começa com a original
 
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
         try {
@@ -162,22 +197,82 @@ async function callOllamaAPI_Anonymize(conversation) {
                 if (RETRYABLE_STATUSES.includes(response.status)) {
                     throw new Error(`Erro de servidor Ollama (HTTP ${response.status}).`);
                 }
-                const errorBody = await response.json();
-                const errorMsg = errorBody.error || `status: ${response.status}`;
-                throw new Error(`Falha na API Ollama (Anonimizar): ${errorMsg}. Verifique se o modelo '${OLLAMA_MODEL}' está disponível.`);
+                // Tenta ler como JSON, se falhar, lê como texto
+                let errorMsg = `status: ${response.status}`;
+                try {
+                    const errorBody = await response.json();
+                    errorMsg = errorBody.error || errorMsg;
+                } catch (e) {
+                    // Ignora o erro de parse JSON e usa o status code
+                }
+                throw new Error(`Falha na API Ollama (Anonimizar/JSON): ${errorMsg}. Verifique se o modelo '${OLLAMA_MODEL}' está disponível.`);
             }
 
             const result = await response.json();
-            
-            if (result.response) {
-                return result.response; // SUCESSO
-            } else {
-                throw new Error('Resposta inesperada do Ollama (Anonimização).');
+
+            if (!result.response) {
+                throw new Error('Resposta inesperada do Ollama (Anonimização/JSON): campo "response" ausente.');
             }
+
+            // --- Lógica de Análise e Substituição ---
+            try {
+                // --- INÍCIO DA CORREÇÃO: Extração Robusta do JSON ---
+                const rawResponse = result.response;
+                const jsonStart = rawResponse.indexOf('[');
+                const jsonEnd = rawResponse.lastIndexOf(']');
+
+                if (jsonStart === -1 || jsonEnd === -1 || jsonEnd < jsonStart) {
+                    // Se não encontrar os colchetes, ou se estiverem na ordem errada,
+                    // pode ser que a IA tenha retornado um JSON vazio `[]` ou nada.
+                    // Verificamos se a resposta é EXATAMENTE `[]`
+                    if (rawResponse.trim() === '[]') {
+                        console.log('[Background] IA não encontrou dados sensíveis (JSON vazio).');
+                        return modifiedConversation; // Retorna a conversa original
+                    }
+                    // Se não for '[]' e não tiver os colchetes, é um erro.
+                    console.error('[Background] Não foi possível encontrar um array JSON válido na resposta da IA:', rawResponse);
+                    throw new Error('A resposta da IA não contém um array JSON válido.');
+                }
+
+                // Extrai a string que está entre o primeiro '[' e o último ']'
+                const jsonString = rawResponse.substring(jsonStart, jsonEnd + 1);
+                // --- FIM DA CORREÇÃO ---
+                
+                // Tenta fazer o parse do JSON extraído
+                const sensitiveDataList = JSON.parse(jsonString);
+
+                // Verifica se é um array
+                if (!Array.isArray(sensitiveDataList)) {
+                    throw new Error('A string extraída não é um array JSON.');
+                }
+
+                // Itera pela lista e substitui no texto ORIGINAL
+                for (const item of sensitiveDataList) {
+                    if (item && item.texto && item.tipo) {
+                        // Usa replaceAll para substituir todas as ocorrências
+                        // Escapa caracteres especiais no texto para a substituição funcionar corretamente
+                        const escapedText = item.texto.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                        const regex = new RegExp(escapedText, 'g'); // Cria um RegExp global
+                        modifiedConversation = modifiedConversation.replace(regex, `[${item.tipo.toUpperCase()}]`);
+                    } else {
+                        console.warn('[Background] Item JSON inválido recebido da IA:', item);
+                        // Continua para o próximo item
+                    }
+                }
+
+                console.log('[Background] Substituição baseada em JSON concluída.');
+                return modifiedConversation; // SUCESSO
+
+            } catch (parseError) {
+                console.error('[Background] Erro ao analisar JSON da IA ou ao substituir texto:', parseError);
+                console.error('[Background] Resposta recebida da IA:', result.response); // Loga a resposta crua para debug
+                throw new Error(`Falha ao processar a lista JSON da IA: ${parseError.message}. Verifique o prompt e a resposta da IA.`);
+            }
+            // --- Fim da Lógica ---
 
         } catch (error) {
             lastError = error;
-            console.warn(`[Background] API (Ollama/Anonimizar) falhou (tentativa ${attempt}/${MAX_RETRIES}). Causa: ${error.message}`);
+            console.warn(`[Background] API (Ollama/Anonimizar/JSON) falhou (tentativa ${attempt}/${MAX_RETRIES}). Causa: ${error.message}`);
 
             if (attempt === MAX_RETRIES) {
                 if (error.message.includes('Failed to fetch')) {
@@ -185,15 +280,16 @@ async function callOllamaAPI_Anonymize(conversation) {
                 }
                 break; // Sai do loop para jogar o último erro
             }
-            if (error.message.includes('Falha na API Ollama')) {
-                 throw error; // Joga o erro permanente imediatamente
+            // Não tenta de novo se for erro de parse JSON ou falha permanente da API
+            if (error.message.includes('Falha na API Ollama') || error.message.includes('Falha ao processar a lista JSON') || error.message.includes('A resposta da IA não contém um array JSON válido')) {
+                throw error; // Joga o erro permanente imediatamente
             }
             const delay = Math.pow(2, attempt) * 1000;
             console.warn(`Tentando de novo em ${delay}ms...`);
             await new Promise(resolve => setTimeout(resolve, delay));
         }
     }
-    throw lastError;
+    throw lastError; // Se todas as tentativas falharem
 }
 
 
@@ -243,7 +339,7 @@ Formato de Saída Obrigatório:
 '*Status Final:*' [Resolvido / Não Resolvido (com justificativa do PASSO 4)]
 '*Análise de Desempenho:*' [Análise objetiva do PASSO 5 em Português]
     `;
-    
+
     const payload = {
         contents: [{ parts: [{ text: prompt }] }],
         safetySettings: [
@@ -289,38 +385,63 @@ Formato de Saída Obrigatório:
         } catch (error) {
             lastError = error;
             console.warn(`[Background] API (Gemini) falhou (tentativa ${attempt}/${MAX_RETRIES}). Causa: ${error.message}`);
-            
+
             if (attempt === MAX_RETRIES) {
                 break; // Sai do loop para jogar o erro
             }
             if (error.message.includes('Falha na API') || error.message.includes('Motivo:')) {
                  throw error; // Joga o erro permanente imediatamente
             }
-            const delay = Math.pow(2, attempt) * 1000; 
+            const delay = Math.pow(2, attempt) * 1000;
             console.warn(`Tentando de novo em ${delay}ms...`);
             await new Promise(resolve => setTimeout(resolve, delay));
         }
     }
-    
+
     throw lastError;
 }
 
-// --- FUNÇÃO de Refinamento com IA (Nuvem/Gemini) - Intacta ---
-async function callGeminiToRefine(summary, instruction) {
-    // 1. Cria um prompt específico para refinamento
+// --- ATUALIZADO: FUNÇÃO de Refinamento com IA (Nuvem/Gemini) ---
+async function callGeminiToRefine(summary, instruction, conversationContext) {
+
+    // --- ATUALIZADO: NOVO PROMPT DE REFINAMENTO (Mais Robusto) ---
     const prompt = `
-Você é um editor de texto assistente. Sua tarefa é reescrever o <ResumoAtual> com base na <Instrução> do usuário.
+Você é um editor de texto assistente. Sua tarefa é reescrever o <ResumoAtual> com base na <Instrucao> do usuário, usando a <ConversaAnonimizada> como fonte de verdade.
+
+IMPORTANTE: O resumo DEVE manter a sua estrutura original de 6 partes, cada uma com seu cabeçalho (ex: '*Resumo Geral:*', '*Andamento:*', etc.).
+
+Sua tarefa é aplicar a <Instrucao> APENAS à seção relevante e retornar o TEXTO COMPLETO, incluindo as seções que não foram alteradas.
+
+EXEMPLO:
+Se <ResumoAtual> for:
+'*Resumo Geral:*' Resumo antigo.
+'*Andamento:*' 1. A. 2. B. 3. C.
+... (outras seções) ...
+
+E a <Instrucao> for: "deixe o andamento mais curto"
+
+Sua resposta DEVE ser:
+'*Resumo Geral:*' Resumo antigo.
+'*Andamento:*' 1. Resumo do andamento.
+... (outras seções) ...
+
+NUNCA retorne apenas a parte que você alterou. Retorne o resumo completo e estruturado.
 Responda APENAS com o texto reescrito, sem preâmbulos, saudações ou "Aqui está o texto:".
+
+<ConversaAnonimizada>
+${conversationContext}
+</ConversaAnonimizada>
 
 <ResumoAtual>
 ${summary}
 </ResumoAtual>
 
-<Instrução>
+<Instrucao>
 ${instruction}
-</Instrução>
+</Instrucao>
     `;
-    
+    // --- FIM DA ATUALIZAÇÃO ---
+
     const payload = {
         contents: [{ parts: [{ text: prompt }] }],
         safetySettings: [
@@ -367,19 +488,109 @@ ${instruction}
         } catch (error) {
             lastError = error;
             console.warn(`[Background] API (Refinamento) falhou (tentativa ${attempt}/${MAX_RETRIES}). Causa: ${error.message}`);
-            
+
             if (attempt === MAX_RETRIES) {
-                break; 
+                break;
             }
             if (error.message.includes('Falha na API') || error.message.includes('Motivo:')) {
-                 throw error; 
+                 throw error;
             }
-            const delay = Math.pow(2, attempt) * 1000; 
+            const delay = Math.pow(2, attempt) * 1000;
             console.warn(`Tentando de novo em ${delay}ms...`);
             await new Promise(resolve => setTimeout(resolve, delay));
         }
     }
-    
+
     throw lastError;
+}
+
+// --- ATUALIZAÇÃO: FUNÇÃO PARA IA DO JOGO DA VELHA (COM PROMPT MELHORADO) ---
+async function callGeminiForTicTacToe(board, history) {
+    const availableMoves = board
+        .map((cell, index) => (cell === '' ? index : null))
+        .filter(index => index !== null);
+    
+    const boardString = board.map(cell => (cell === '' ? ' ' : cell)).join(',');
+
+    // --- PROMPT MELHORADO (ESTILO MINIMAX) ---
+    const prompt = `
+Você é um jogador perfeito e invencível de Jogo da Velha (Tic-Tac-Toe), baseado no algoritmo Minimax.
+Você joga como 'O'. O humano joga como 'X'.
+
+O tabuleiro atual é (células 0-8): [${boardString}]
+As jogadas ainda disponíveis (posições vazias) são: [${availableMoves.join(', ')}]
+O histórico de jogadas é: ${JSON.stringify(history)}
+
+Você DEVE seguir esta ordem de prioridade para escolher sua jogada:
+1.  **VENCER:** Se você ('O') pode completar 3 em linha nesta jogada, ESCOLHA ESSA JOGADA.
+2.  **BLOQUEAR:** Se o humano ('X') pode completar 3 em linha na próxima jogada, BLOQUEIE ESSA JOGADA.
+3.  **CRIAR GARFO (FORK):** Tente jogar numa posição que crie duas ameaças de vitória para 'O' simultaneamente.
+4.  **BLOQUEAR GARFO:** Se o humano ('X') está a tentar criar um garfo, jogue na posição que o impede.
+5.  **JOGADA ESTRATÉGICA (se nada acima for possível):**
+    a. Jogue no centro (célula 4), se disponível.
+    b. Jogue num canto oposto ao do humano (ex: se 'X' está em 0, jogue em 8).
+    c. Jogue em qualquer canto vazio (0, 2, 6, 8).
+    d. Jogue em qualquer lateral vazia (1, 3, 5, 7).
+
+Analise o tabuleiro [${boardString}] e escolha o NÚMERO da melhor jogada possível a partir da lista [${availableMoves.join(', ')}].
+`;
+    // --- FIM DO PROMPT MELHORADO ---
+
+    const payload = {
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: {
+            responseMimeType: "application/json",
+            responseSchema: {
+                type: "OBJECT",
+                properties: {
+                    "move": { 
+                        "type": "NUMBER",
+                        "description": "O número da célula (0-8) para a jogada."
+                    }
+                },
+                required: ["move"]
+            }
+        },
+        safetySettings: [
+            { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
+            { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
+            { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" },
+            { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" },
+        ]
+    };
+
+    // Não vamos usar a lógica de retry aqui, pois é só um jogo
+    try {
+        const response = await fetch(API_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+        });
+
+        if (!response.ok) {
+            throw new Error(`Falha na API (HTTP ${response.status}).`);
+        }
+
+        const result = await response.json();
+        const candidate = result.candidates?.[0];
+
+        if (candidate && candidate.content?.parts?.[0]?.text) {
+            const jsonResponse = JSON.parse(candidate.content.parts[0].text);
+            if (typeof jsonResponse.move === 'number' && availableMoves.includes(jsonResponse.move)) {
+                return jsonResponse.move; // SUCESSO
+            } else {
+                // Se a IA retornar uma jogada inválida, apenas escolhe a primeira disponível
+                console.warn(`IA retornou jogada inválida (${jsonResponse.move}), usando fallback.`);
+                return availableMoves[0];
+            }
+        } else {
+            throw new Error('Resposta inesperada da IA do Jogo da Velha.');
+        }
+
+    } catch (error) {
+        console.error('[Background] Erro na chamada da IA do Jogo da Velha:', error);
+        // Fallback: se a API falhar, joga aleatoriamente
+        return availableMoves[Math.floor(Math.random() * availableMoves.length)];
+    }
 }
 
