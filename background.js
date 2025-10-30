@@ -327,7 +327,7 @@ PASSO 5: (Análise de Desempenho) Avalie objetivamente a atuação da equipe de 
 PASSO 6: (Análise do Resumo Geral) Com base em todas as análises anteriores (Problema, Solução, Status), crie um resumo executivo de 1-2 frases. Ele deve explicar a queixa principal, a ação principal e o resultado final.
 
 **REGRA DE FORMATAÇÃO MAIS IMPORTANTE DE TODAS:**
-Sua resposta DEVE começar *exatamente* com o caractere ''' da linha ''*Resumo Geral:*''.
+Sua resposta DEVE começar *exatamente* com o caractere da linha ''*Resumo Geral:*''.
 É PROIBIDO gerar qualquer texto, título, ou preâmbulo (como 'A conversa foi processada com sucesso!') antes disso.
 A resposta DEVE terminar *exatamente* após a linha ''*Análise de Desempenho:*''.
 
