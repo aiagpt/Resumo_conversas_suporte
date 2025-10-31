@@ -324,6 +324,7 @@ PASSO 5: (Análise de Desempenho) Avalie objetivamente a atuação da equipe de 
 - Pontos a melhorar: O suporte demorou a responder? Fez perguntas desnecessárias? Não entendeu o problema? Esqueceu de dar retorno?
 - Pontos positivos: Foi ágil? Fez as perguntas corretas para o diagnóstico? Foi claro na solução? Foi empático?
 
+
 PASSO 6: (Análise do Resumo Geral) Com base em todas as análises anteriores (Problema, Solução, Status), crie um resumo executivo de 1-2 frases. Ele deve explicar a queixa principal, a ação principal e o resultado final.
 
 **REGRA DE FORMATAÇÃO MAIS IMPORTANTE DE TODAS:**

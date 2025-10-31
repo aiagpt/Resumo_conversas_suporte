@@ -610,7 +610,7 @@ const VerdanaDeskHandler = {
                                                 try {
                                                     // --- Reativa os botões em qualquer cenário (sucesso ou erro) ---
                                                     currentConfirmYes.classList.remove('loading');
-                                                    currentConfirmYes.querySelector('.crx-button-text').textContent = 'Sim (Usar IA Local)';
+                                                    currentConfirmYes.querySelector('.crx-button-text').textContent = 'Sim';
                                                     currentConfirmYes.disabled = false;
                                                     currentConfirmNo.disabled = false;
 
@@ -641,7 +641,7 @@ const VerdanaDeskHandler = {
                                                     // --- Erro no callback do PASSO 2 ---
                                                     console.error('[ContentScript] Erro fatal no callback (PASSO 2):', e.message);
                                                     currentConfirmYes.classList.remove('loading');
-                                                    currentConfirmYes.querySelector('.crx-button-text').textContent = 'Sim (Usar IA Local)';
+                                                    currentConfirmYes.querySelector('.crx-button-text').textContent = 'Sim';
                                                     currentConfirmYes.disabled = false;
                                                     currentConfirmNo.disabled = false;
                                                     currentViewConfirm.style.display = 'none';
@@ -658,7 +658,7 @@ const VerdanaDeskHandler = {
                                     // --- Erro no callback do PASSO 1 ---
                                     console.error('[ContentScript] Erro fatal no callback (PASSO 1):', e.message);
                                     currentConfirmYes.classList.remove('loading');
-                                    currentConfirmYes.querySelector('.crx-button-text').textContent = 'Sim (Usar IA Local)';
+                                    currentConfirmYes.querySelector('.crx-button-text').textContent = 'Sim';
                                     currentConfirmYes.disabled = false;
                                     currentConfirmNo.disabled = false;
                                     currentViewConfirm.style.display = 'none';
@@ -1037,7 +1037,7 @@ const GlpiHandler = {
                                                 try {
                                                     // --- Reativa os botões em qualquer cenário (sucesso ou erro) ---
                                                     currentConfirmYes.classList.remove('loading');
-                                                    currentConfirmYes.querySelector('.crx-button-text').textContent = 'Sim (Usar IA Local)';
+                                                    currentConfirmYes.querySelector('.crx-button-text').textContent = 'Sim ';
                                                     currentConfirmYes.disabled = false;
                                                     currentConfirmNo.disabled = false;
 
@@ -1067,7 +1067,7 @@ const GlpiHandler = {
                                                     // --- Erro no callback do PASSO 2 ---
                                                     console.error('[ContentScript] Erro fatal no callback (PASSO 2):', e.message);
                                                     currentConfirmYes.classList.remove('loading');
-                                                    currentConfirmYes.querySelector('.crx-button-text').textContent = 'Sim (Usar IA Local)';
+                                                    currentConfirmYes.querySelector('.crx-button-text').textContent = 'Sim';
                                                     currentConfirmYes.disabled = false;
                                                     currentConfirmNo.disabled = false;
                                                     currentViewConfirm.style.display = 'none';
@@ -1084,7 +1084,7 @@ const GlpiHandler = {
                                     // --- Erro no callback do PASSO 1 ---
                                     console.error('[ContentScript] Erro fatal no callback (PASSO 1):', e.message);
                                     currentConfirmYes.classList.remove('loading');
-                                    currentConfirmYes.querySelector('.crx-button-text').textContent = 'Sim (Usar IA Local)';
+                                    currentConfirmYes.querySelector('.crx-button-text').textContent = 'Sim';
                                     currentConfirmYes.disabled = false;
                                     currentConfirmNo.disabled = false;
                                     currentViewConfirm.style.display = 'none';
