@@ -1,0 +1,102 @@
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background-color: #f4f5f7;
+    margin: 0;
+    padding: 20px;
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    min-height: 100vh;
+}
+
+.container {
+    background-color: white;
+    padding: 30px;
+    border-radius: 10px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+    width: 100%;
+    max-width: 600px;
+    border: 1px solid #ddd;
+}
+
+h1 {
+    font-size: 1.5rem;
+    color: #00875f;
+    margin-top: 0;
+    margin-bottom: 10px;
+    text-align: center;
+}
+
+p {
+    text-align: center;
+    color: #555;
+    margin-bottom: 30px;
+}
+
+.form-group {
+    margin-bottom: 25px;
+}
+
+.form-group label {
+    display: block;
+    font-weight: 600;
+    color: #333;
+    margin-bottom: 8px;
+    font-size: 14px;
+}
+
+.form-group input[type="text"],
+.form-group input[type="password"] {
+    width: 100%;
+    padding: 12px;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+    font-size: 14px;
+    box-sizing: border-box; /* Garante que o padding não estoure a largura */
+    transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.form-group input[type="text"]:focus,
+.form-group input[type="password"]:focus {
+    border-color: #00875f;
+    box-shadow: 0 0 0 3px rgba(0, 135, 95, 0.1);
+    outline: none;
+}
+
+.form-group small {
+    display: block;
+    margin-top: 8px;
+    font-size: 12px;
+    color: #777;
+}
+
+.crx-button {
+    width: 100%;
+    padding: 12px;
+    border: none;
+    border-radius: 6px;
+    background-color: #00875f;
+    color: white;
+    font-size: 16px;
+    font-weight: bold;
+    cursor: pointer;
+    transition: background-color 0.2s, box-shadow 0.2s;
+    text-align: center;
+    margin-top: 10px;
+}
+
+.crx-button:hover {
+    background-color: #006a4c;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.15);
+}
+
+#status-message {
+    margin-top: 20px;
+    text-align: center;
+    font-weight: 500;
+    font-size: 14px;
+}
+
+#status-message.success {
+    color: #00875f;
+}

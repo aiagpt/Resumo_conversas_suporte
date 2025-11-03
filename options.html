@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Opções - Gerador de Resumo</title>
+    <link rel="stylesheet" type="text/css" href="options.css">
+</head>
+<body>
+    <div class="container">
+        <h1>Configurações do Gerador de Resumo</h1>
+        <p>Defina aqui as suas chaves de API e endpoints.</p>
+
+        <div class="form-group">
+            <label for="gemini-api-key">Chave da API do Google Gemini</label>
+            <input type="password" id="gemini-api-key" placeholder="Cole sua chave (ex: AIza...)">
+            <small>Necessária para resumos, refinamento e IA do Jogo da Velha.</small>
+        </div>
+
+        <div class="form-group">
+            <label for="ollama-url">URL do Servidor Ollama</label>
+            <input type="text" id="ollama-url" placeholder="ex: http://10.0.0.5:11434">
+            <small>Endpoint base do seu servidor Ollama (sem /api/generate).</small>
+        </div>
+
+        <div class="form-group">
+            <label for="ollama-model">Modelo do Ollama</label>
+            <input type="text" id="ollama-model" placeholder="ex: llama3:8b">
+            <small>Nome do modelo local para anonimização (ex: `llama3:8b`).</small>
+        </div>
+
+        <div class="form-group">
+            <label for="discord-webhook-url">URL do Webhook do Discord</label>
+            <input type="password" id="discord-webhook-url" placeholder="https://discord.com/api/webhooks/...">
+            <small>O URL do webhook para enviar relatórios para o Discord.</small>
+        </div>
+
+        <button id="save-button" class="crx-button">Salvar Configurações</button>
+        <div id="status-message"></div>
+    </div>
+    <script src="options.js"></script>
+</body>
+</html>

@@ -6,19 +6,14 @@ let pageObserver = null; // Instância do MutationObserver
 let audioContext = null;
 function playNotificationSound() {
     try {
-        // Obter o URL do ficheiro de áudio a partir da extensão
         const soundUrl = chrome.runtime.getURL('notificacao.mp3');
         const audio = new Audio(soundUrl);
-        
-        // Tenta tocar o áudio
         const playPromise = audio.play();
 
         if (playPromise !== undefined) {
             playPromise.then(_ => {
-                // Áudio começou a tocar
                 console.log("Notificação a tocar.");
             }).catch(error => {
-                // Erro ao tocar (ex: interação do utilizador necessária)
                 console.error("Erro ao tocar notificação:", error);
             });
         }
@@ -29,19 +24,17 @@ function playNotificationSound() {
 
 
 // --- Lógica de UI (Genérica - Usada por ambos) ---
-// (Definida primeiro para estar disponível para os handlers)
 function createModalUI() {
-    // --- Variáveis de estado para o editor do Lightbox ---
     let originalLightboxText = "";
     let hasMadeEdits = false;
     
     const modalContainer = document.createElement('div');
     modalContainer.id = 'crx-modal-container';
     
-    // --- CORREÇÃO: Anexa o histórico ao modalContainer ---
-    // para que possa ser acedido por listeners definidos fora desta função
+    // Armazena o histórico de refinamento
     modalContainer.refineHistory = [];
-    // --- FIM CORREÇÃO ---
+    // --- NOVO: Armazena o contexto da conversa ---
+    modalContainer.conversationContext = ""; // Inicializa vazio
 
 
     const closeButton = document.createElement('button');
@@ -57,27 +50,22 @@ function createModalUI() {
     view2.style.display = 'none';
     modalContainer.appendChild(view2);
 
-    // NOVO: View de Confirmação
     const viewConfirm = createConfirmView();
     viewConfirm.style.display = 'none';
     modalContainer.appendChild(viewConfirm);
 
-    // --- NOVO: Criação do Lightbox (Modal de Visualização) ---
     const lightboxContainer = document.createElement('div');
     lightboxContainer.id = 'crx-lightbox-container';
     lightboxContainer.innerHTML = `
         <div class="crx-lightbox-content">
             <button id="crx-lightbox-close">&times;</button>
-            <textarea id="crx-lightbox-textarea"></textarea> <!-- 'readonly' REMOVIDO -->
+            <textarea id="crx-lightbox-textarea"></textarea>
             
-            <!-- ATUALIZADO: Barra de Botões do Lightbox -->
             <div class="crx-lightbox-button-bar">
-                <!-- NOVO: Botão Desfazer Refinamento -->
                 <button id="crx-ai-undo-button" class="crx-button crx-button-secondary" disabled>↩️ Desfazer</button>
                 <button id="crx-ai-fix-button" class="crx-button">✨ Consertar com IA</button>
             </div>
 
-            <!-- NOVO: Modal de Confirmação de Edição (Dentro do Lightbox) -->
             <div id="crx-edit-confirm-modal" class="crx-edit-confirm-overlay">
                 <div class="crx-edit-confirm-box">
                     <p>Deseja aplicar as alterações feitas no texto?</p>
@@ -85,9 +73,7 @@ function createModalUI() {
                     <button id="crx-confirm-cancel" class="crx-button crx-button-secondary">Cancelar (Perder)</button>
                 </div>
             </div>
-            <!-- FIM Modal de Confirmação -->
 
-            <!-- NOVO: Modal de Refinamento IA -->
             <div id="crx-ai-refine-modal" class="crx-edit-confirm-overlay">
                 <div class="crx-ai-refine-box">
                     <p>O que deseja alterar no resumo?</p>
@@ -99,30 +85,20 @@ function createModalUI() {
                     <button id="crx-ai-refine-cancel" class="crx-button crx-button-secondary">Cancelar</button>
                 </div>
             </div>
-            <!-- FIM Modal de Refinamento IA -->
 
         </div>
     `;
-    modalContainer.appendChild(lightboxContainer); // Adiciona ao modal principal
-    // --- FIM Lightbox ---
+    modalContainer.appendChild(lightboxContainer);
 
     const copyButton = view2.querySelector('#crx-copy-button');
     const reportTextarea = view2.querySelector('#crx-report-textarea');
-    // --- NOVO: Botão Gerar Novo ---
     const retryButton = view2.querySelector('#crx-retry-button');
-
-    // --- NOVO: Referências do Lightbox ---
     const lightboxTextarea = lightboxContainer.querySelector('#crx-lightbox-textarea');
     const lightboxCloseButton = lightboxContainer.querySelector('#crx-lightbox-close');
-    // --- NOVO: Botão Desfazer Refinamento ---
     const aiUndoButton = lightboxContainer.querySelector('#crx-ai-undo-button');
-
-    // --- NOVO: Referências do Modal de Confirmação ---
     const editConfirmModal = lightboxContainer.querySelector('#crx-edit-confirm-modal');
     const confirmApplyButton = lightboxContainer.querySelector('#crx-confirm-apply');
     const confirmCancelButton = lightboxContainer.querySelector('#crx-confirm-cancel');
-
-    // --- NOVO: Referências do Modal de Refinamento IA ---
     const aiFixButton = lightboxContainer.querySelector('#crx-ai-fix-button');
     const aiRefineModal = lightboxContainer.querySelector('#crx-ai-refine-modal');
     const aiRefinePrompt = lightboxContainer.querySelector('#crx-ai-refine-prompt');
@@ -130,27 +106,79 @@ function createModalUI() {
     const aiRefineCancel = lightboxContainer.querySelector('#crx-ai-refine-cancel');
 
 
+    // --- ATUALIZADO: Listener do Botão "Copiar" ---
     copyButton.addEventListener('click', () => {
+        // 1. Lógica de cópia
         reportTextarea.select();
         try {
             document.execCommand('copy');
-            copyButton.textContent = 'Copiado!';
+            copyButton.querySelector('.crx-button-text').textContent = 'Copiado!'; // Texto dentro do span
         } catch (err) {
             console.error('[Gerador de Resumo] Falha ao copiar:', err);
-            copyButton.textContent = 'Erro ao copiar';
+            copyButton.querySelector('.crx-button-text').textContent = 'Erro ao copiar';
         }
-        setTimeout(() => {
-            copyButton.innerHTML = '📋 Copiar';
-        }, 2000);
-    });
 
-    // --- NOVO: Listener para Gerar Novo ---
+        // 2. NOVA LÓGICA: Enviar para o Discord
+        try {
+            const relatorioFinal = reportTextarea.value;
+            // Pega o contexto que salvamos no modalContainer
+            const contextoConversa = modalContainer.conversationContext; 
+
+            if (relatorioFinal && contextoConversa) {
+                copyButton.classList.add('loading'); // Mostra spinner
+                copyButton.querySelector('.crx-button-text').textContent = 'Enviando...';
+                copyButton.disabled = true;
+
+                chrome.runtime.sendMessage(
+                    {
+                        command: 'sendToDiscord',
+                        report: relatorioFinal,
+                        context: contextoConversa
+                    },
+                    (response) => {
+                        // Oculta spinner
+                        copyButton.classList.remove('loading');
+                        
+                        if (chrome.runtime.lastError) {
+                            console.error('[ContentScript] Erro ao enviar p/ Discord:', chrome.runtime.lastError.message);
+                            copyButton.querySelector('.crx-button-text').textContent = 'Erro no envio';
+                        } else if (response && response.success) {
+                            console.log('[ContentScript] Enviado para o Discord com sucesso.');
+                            copyButton.querySelector('.crx-button-text').textContent = 'Enviado!';
+                        } else {
+                            console.error('[ContentScript] Falha no envio p/ Discord:', response.error);
+                            copyButton.querySelector('.crx-button-text').textContent = 'Falha no envio';
+                        }
+                        
+                        // Reverte o botão após 2 segundos
+                        setTimeout(() => {
+                            copyButton.querySelector('.crx-button-text').textContent = '📋 Copiar';
+                            copyButton.disabled = false;
+                        }, 2000);
+                    }
+                );
+            } else {
+                console.warn('[ContentScript] Não foi possível enviar p/ Discord: dados ausentes.');
+                // Reverte o botão se falhar (mesmo que tenha copiado)
+                setTimeout(() => {
+                    copyButton.querySelector('.crx-button-text').textContent = '📋 Copiar';
+                }, 2000);
+            }
+        } catch (e) {
+            console.error('[ContentScript] Erro na lógica de envio p/ Discord:', e);
+            setTimeout(() => {
+                copyButton.classList.remove('loading');
+                copyButton.querySelector('.crx-button-text').textContent = '📋 Copiar';
+                copyButton.disabled = false;
+            }, 2000);
+        }
+    });
+    // --- FIM DA ATUALIZAÇÃO ---
+
+
     retryButton.addEventListener('click', () => {
-        // Volta para a view 1
         document.getElementById('crx-view-2').style.display = 'none';
         document.getElementById('crx-view-1').style.display = 'flex';
-        
-        // Limpa o textarea de observações para um novo resumo
         const obsTextarea = document.getElementById('crx-obs-textarea');
         if (obsTextarea) {
             obsTextarea.value = '';
@@ -158,110 +186,75 @@ function createModalUI() {
         }
     });
 
-    // --- ATUALIZADO: Listeners para abrir o Lightbox ---
     reportTextarea.addEventListener('click', () => {
-        // Armazena o texto original e reseta o estado
         originalLightboxText = reportTextarea.value;
         lightboxTextarea.value = originalLightboxText;
         hasMadeEdits = false;
         
-        // --- CORREÇÃO: Reseta o histórico no modalContainer ---
         modalContainer.refineHistory = [];
         aiUndoButton.disabled = true; 
         
-        // Limpa os modais (caso tenham ficado abertos)
         editConfirmModal.style.display = 'none';
         aiRefineModal.style.display = 'none';
         
-        // Exibe o lightbox
         lightboxContainer.style.display = 'flex';
     });
 
-    // --- NOVO: Listener para Rastrear Edições ---
     lightboxTextarea.addEventListener('input', () => {
         hasMadeEdits = true;
     });
 
-
-    // --- ATUALIZADO: Listener para fechar o Lightbox (Botão 'X') ---
     lightboxCloseButton.addEventListener('click', () => {
-        // Verifica se o texto foi alterado
         const currentText = lightboxTextarea.value;
         if (hasMadeEdits && currentText !== originalLightboxText) {
-            // Se mudou, mostra confirmação
             editConfirmModal.style.display = 'flex';
         } else {
-            // Se não mudou, apenas fecha
             lightboxContainer.style.display = 'none';
         }
     });
 
-    // --- NOVO: Listeners do Modal de Confirmação ---
     confirmApplyButton.addEventListener('click', () => {
-        // Aplica o texto editado ao textarea principal
         reportTextarea.value = lightboxTextarea.value;
-        
-        // Esconde ambos os modais
         editConfirmModal.style.display = 'none';
         lightboxContainer.style.display = 'none';
     });
 
     confirmCancelButton.addEventListener('click', () => {
-        // Apenas esconde os modais, perdendo as alterações
         editConfirmModal.style.display = 'none';
         lightboxContainer.style.display = 'none';
     });
-    // --- FIM Listeners Lightbox ---
 
-    // --- CORREÇÃO: Listener do Botão Desfazer Refinamento ---
     aiUndoButton.addEventListener('click', () => {
-        // Lê o histórico do modalContainer
         if (modalContainer.refineHistory.length > 0) {
-            // Pega o último estado guardado
             const previousText = modalContainer.refineHistory.pop();
             lightboxTextarea.value = previousText;
-            
-            // Marca como uma edição (para o diálogo "Aplicar/Cancelar" funcionar)
             hasMadeEdits = true; 
-            
-            // Se o histórico estiver vazio agora, desabilita o botão
             if (modalContainer.refineHistory.length === 0) {
                 aiUndoButton.disabled = true;
             }
         }
     });
-    // --- FIM Listener Desfazer ---
 
-    // --- NOVO: Listeners do Modal de Refinamento IA ---
     aiFixButton.addEventListener('click', () => {
-        aiRefinePrompt.value = ''; // Limpa o prompt anterior
-        aiRefinePrompt.style.color = '#333'; // Reseta cor de erro
-        aiRefineModal.style.display = 'flex'; // Mostra o modal de refinamento
+        aiRefinePrompt.value = '';
+        aiRefinePrompt.style.color = '#333';
+        aiRefineModal.style.display = 'flex';
     });
 
     aiRefineCancel.addEventListener('click', () => {
-        aiRefineModal.style.display = 'none'; // Esconde o modal de refinamento
+        aiRefineModal.style.display = 'none';
     });
 
-    // --- ATUALIZADO: Listener do Botão "Refinar" (agora com 2 etapas) ---
-    // A lógica real será anexada nos Handlers (onTriggerButtonClick)
-    // para ter acesso à 'capturedFullConversation'
     aiRefineSubmit.addEventListener('click', () => {
-        // Este listener será substituído (ou melhor, anexado)
-        // dentro do escopo de onTriggerButtonClick
-        console.log("Botão Refinar clicado (placeholder).");
+        console.log("Botão Refinar clicado (placeholder). A lógica real será anexada no onTriggerButtonClick.");
     });
-    // --- FIM Listeners de Refinamento ---
 
-
-    // Retorna as visualizações (embora agora vamos usar IDs)
     return { modalContainer, view1, view2, viewConfirm, reportTextarea };
 }
 
 function createView1() {
     const view = document.createElement('div');
     view.className = 'crx-view';
-    // --- ATUALIZAÇÃO: Adicionado ID ---
     view.id = 'crx-view-1'; 
     view.innerHTML = `
         <h2>Gerador de Resumo</h2>
@@ -280,24 +273,25 @@ function createView1() {
 function createView2() {
     const view = document.createElement('div');
     view.className = 'crx-view';
-    // --- ATUALIZAÇÃO: Adicionado ID ---
     view.id = 'crx-view-2';
     view.innerHTML = `
         <h2>Relatório Gerado</h2>
         <textarea id="crx-report-textarea" readonly></textarea>
         <div class="crx-button-group">
-            <button id="crx-copy-button" class="crx-button">📋 Copiar</button>
+            <button id="crx-copy-button" class="crx-button">
+                <!-- NOVO: Adicionado span e spinner -->
+                <span class="crx-button-text">📋 Copiar</span>
+                <div class="crx-spinner"></div>
+            </button>
             <button id="crx-retry-button" class="crx-button crx-button-secondary">🔄 Gerar Novo</button>
         </div>
     `;
     return view;
 }
 
-// NOVO: Função para criar a view de confirmação
 function createConfirmView() {
     const view = document.createElement('div');
     view.className = 'crx-view crx-confirm-view';
-    // --- ATUALIZAÇÃO: Adicionado ID ---
     view.id = 'crx-view-confirm';
     view.innerHTML = `
         <h2>Verificação de Segurança</h2>
@@ -320,20 +314,14 @@ function createConfirmView() {
 
 // --- DEFINIÇÃO DOS HANDLERS ---
 
-/**
- * Manipulador para a estrutura original (VerdanaDesk com botão "Finalizar")
- */
 const VerdanaDeskHandler = {
 
     siteIdentifier: "VerdanaDesk_Finalizar",
 
     getText: function(selector) {
-        // Procura dentro do overlay, para garantir que estamos pegando os dados do popup
         const overlay = document.querySelector('div.v-overlay__content');
-        const context = overlay || document; // Usa o overlay se existir, senão o documento todo
-        
+        const context = overlay || document;
         const element = context.querySelector(selector);
-        // Usa .textContent para pegar texto de elementos aninhados
         return element ? element.textContent.trim() : '';
     },
 
@@ -345,7 +333,6 @@ const VerdanaDeskHandler = {
                 if (button && !button.hasAttribute('data-crx-listener')) {
                     console.log('[Gerador de Resumo] Botão "Finalizar" (Verdana) encontrado!');
                     button.setAttribute('data-crx-listener', 'true');
-                    // NÃO usa captura, espera o overlay
                     button.addEventListener('click', VerdanaDeskHandler.onTriggerButtonClick);
                 }
             }
@@ -353,10 +340,9 @@ const VerdanaDeskHandler = {
     },
 
     onTriggerButtonClick: function(event) {
-        // --- ATUALIZAÇÃO: Variável para guardar a conversa para o contexto ---
-        let contextForRefinement = "";
+        // --- ATUALIZAÇÃO: Variável movida para fora (mas ainda dentro do escopo do clique) ---
+        // let contextForRefinement = ""; // Removido daqui, usaremos o modalContainer
         
-        // --- Try...catch principal para erros na criação do modal ---
         try {
             if (!isExtensionEnabled) return;
             
@@ -365,24 +351,18 @@ const VerdanaDeskHandler = {
             const existingModal = document.getElementById('crx-modal-container');
             if (existingModal) existingModal.remove();
 
-            // Cria o modal (as variáveis aqui podem ficar "stale" após 5 min)
             const { modalContainer, view1, view2, viewConfirm, reportTextarea } = createModalUI();
             
             const generateButton = view1.querySelector('#crx-generate-button');
-            // const obsTextarea = view1.querySelector('#crx-obs-textarea'); // Movido para dentro dos listeners
             const confirmYesButton = viewConfirm.querySelector('#crx-confirm-yes');
             const confirmNoButton = viewConfirm.querySelector('#crx-confirm-no');
-
-            // --- ATUALIZAÇÃO: Lógica de refinamento movida para cá ---
             const aiRefineSubmit = modalContainer.querySelector('#crx-ai-refine-submit');
             const aiRefineCancel = modalContainer.querySelector('#crx-ai-refine-cancel');
             const aiRefinePrompt = modalContainer.querySelector('#crx-ai-refine-prompt');
             const aiRefineModal = modalContainer.querySelector('#crx-ai-refine-modal');
             const lightboxTextarea = modalContainer.querySelector('#crx-lightbox-textarea');
-            // --- NOVO: Referência ao botão de desfazer ---
             const aiUndoButton = modalContainer.querySelector('#crx-ai-undo-button');
             
-            // Remove o listener placeholder e anexa o real
             aiRefineSubmit.replaceWith(aiRefineSubmit.cloneNode(true));
             const aiRefineSubmitReal = modalContainer.querySelector('#crx-ai-refine-submit');
             
@@ -397,19 +377,17 @@ const VerdanaDeskHandler = {
                 }
         
                 aiRefineSubmitReal.classList.add('loading');
-                // --- ATUALIZAÇÃO: Texto do botão (não há mais passo 1/2) ---
                 aiRefineSubmitReal.querySelector('.crx-button-text').textContent = 'A refinar...';
                 aiRefineSubmitReal.disabled = true;
                 aiRefineCancel.disabled = true;
         
-                // --- ATUALIZAÇÃO: Removido o PASSO 1 (Anonimizar) daqui ---
-                // --- PASSO 2: Envia para Refinar com o contexto ---
                 chrome.runtime.sendMessage(
                     { 
                         command: 'refineSummary', 
                         summary: currentSummary, 
                         instruction: instruction,
-                        conversationContext: contextForRefinement // <-- Usa o contexto já guardado
+                        // --- ATUALIZADO: Lê o contexto do modalContainer ---
+                        conversationContext: modalContainer.conversationContext 
                     }, 
                     (refineResponse) => {
                         try {
@@ -419,20 +397,14 @@ const VerdanaDeskHandler = {
                             aiRefineCancel.disabled = false;
 
                             if (refineResponse && refineResponse.refinedSummary) {
-                                // --- SUCESSO FINAL ---
-
-                                // --- CORREÇÃO: Salva o estado ATUAL (antes da mudança) no histórico ---
                                 const textBeforeRefine = lightboxTextarea.value;
-                                // Acessa o 'refineHistory' do modalContainer
                                 modalContainer.refineHistory.push(textBeforeRefine);
-                                aiUndoButton.disabled = false; // <-- Habilita o botão!
+                                aiUndoButton.disabled = false; 
                                 
-                                lightboxTextarea.value = refineResponse.refinedSummary; // Atualiza o texto
-                                // Dispara evento de input para o listener 'hasMadeEdits'
+                                lightboxTextarea.value = refineResponse.refinedSummary;
                                 lightboxTextarea.dispatchEvent(new Event('input', { bubbles: true }));
-                                aiRefineModal.style.display = 'none'; // Fecha o modal de refinamento
+                                aiRefineModal.style.display = 'none';
                             } else if (refineResponse && refineResponse.error) {
-                                console.error('[ContentScript] Erro ao refinar:', refineResponse.error);
                                 throw new Error(refineResponse.error);
                             } else {
                                 throw new Error('Resposta inválida do refinamento.');
@@ -449,21 +421,17 @@ const VerdanaDeskHandler = {
                     }
                 );
             });
-            // --- FIM LÓGICA REFINAMENTO ---
 
             generateButton.addEventListener('click', (e_gen) => {
                 e_gen.stopPropagation();
-                // --- ATUALIZAÇÃO: Procura os elementos pelos IDs para garantir ---
                 document.getElementById('crx-view-1').style.display = 'none';
                 document.getElementById('crx-view-confirm').style.display = 'flex';
             });
 
-            // --- LÓGICA CONFIRMAÇÃO "NÃO" (Usar IA da Nuvem) ---
             confirmNoButton.addEventListener('click', (e_no) => {
                 try {
                     e_no.stopPropagation();
                     
-                    // --- ATUALIZAÇÃO: Busca dinâmica de elementos ---
                     const currentConfirmYes = document.getElementById('crx-confirm-yes');
                     const currentConfirmNo = document.getElementById('crx-confirm-no');
                     const currentObsTextarea = document.getElementById('crx-obs-textarea');
@@ -488,30 +456,26 @@ const VerdanaDeskHandler = {
                         fullConversation += `\n\n--- Observações Adicionais do Técnico ---\n${observations}`;
                     }
 
-                    // --- ATUALIZAÇÃO: Guardar conversa para contexto ---
-                    contextForRefinement = fullConversation;
+                    // --- ATUALIZAÇÃO: Salva o contexto no modal ---
+                    modalContainer.conversationContext = fullConversation;
                     
                     try {
                         chrome.runtime.sendMessage(
-                            { command: 'summarizeConversation', conversation: fullConversation }, // Comando da Nuvem
+                            { command: 'summarizeConversation', conversation: fullConversation },
                             (response) => {
                                 try {
-                                    // Reativa botões
                                     currentConfirmNo.classList.remove('loading');
                                     currentConfirmNo.disabled = false;
                                     currentConfirmYes.disabled = false;
 
                                     if (chrome.runtime.lastError) {
-                                        console.error('[ContentScript] Contexto invalidado no callback (Verdana Nuvem):', chrome.runtime.lastError.message);
+                                        console.error('[ContentScript] Contexto invalidado (Verdana Nuvem):', chrome.runtime.lastError.message);
                                         document.getElementById('crx-modal-container')?.remove();
                                         return;
                                     }
                                     
                                     if (response && response.summary) {
                                         playNotificationSound();
-                                        // const originalReport = VerdanaDeskHandler.extractReportBaseData(); // <-- REMOVIDO
-                                        
-                                        // --- ATUALIZAÇÃO: Remove prefixo ---
                                         currentReportTextarea.value = response.summary;
                                         if (observations.trim() !== '') {
                                             currentReportTextarea.value += `\n\nObservações Adicionais:\n${observations}`;
@@ -523,7 +487,7 @@ const VerdanaDeskHandler = {
                                         console.error('[ContentScript] Erro no resumo (Verdana Nuvem):', response.error);
                                         currentViewConfirm.style.display = 'none';
                                         currentView1.style.display = 'flex';
-                                        currentObsTextarea.value = `Erro ao gerar resumo (Nuvem): ${response.error}`;
+                                        currentObsTextarea.value = `Erro: ${response.error}. Verifique as Opções da extensão.`;
                                         currentObsTextarea.style.color = 'red';
                                     } else {
                                         console.error('[ContentScript] Resposta inválida (Verdana Nuvem):', response);
@@ -543,17 +507,15 @@ const VerdanaDeskHandler = {
                         throw error; 
                     }
                 } catch (error) {
-                    console.error('[ContentScript] Erro no listener do botão "Não" (Verdana Nuvem):', error.message);
+                    console.error('[ContentScript] Erro no listener "Não" (Verdana Nuvem):', error.message);
                     document.getElementById('crx-modal-container')?.remove();
                 }
             });
 
-            // --- ATUALIZADO: LÓGICA CONFIRMAÇÃO "SIM" (FLUXO NOVO: Anonimizar Local -> Resumir Nuvem) ---
             confirmYesButton.addEventListener('click', (e_yes) => {
                 try {
                     e_yes.stopPropagation();
                     
-                    // --- Busca dinâmica de elementos ---
                     const currentConfirmYes = document.getElementById('crx-confirm-yes');
                     const currentConfirmNo = document.getElementById('crx-confirm-no');
                     const currentObsTextarea = document.getElementById('crx-obs-textarea');
@@ -562,7 +524,6 @@ const VerdanaDeskHandler = {
                     const currentReportTextarea = document.getElementById('crx-report-textarea');
                     const currentView1 = document.getElementById('crx-view-1');
 
-                    // --- PASSO 1: Anonimização ---
                     currentConfirmYes.classList.add('loading');
                     currentConfirmYes.querySelector('.crx-button-text').textContent = 'A anonimizar (1/2)...';
                     currentConfirmYes.disabled = true;
@@ -579,36 +540,28 @@ const VerdanaDeskHandler = {
                     if (observations.trim() !== '') {
                         fullConversation += `\n\n--- Observações Adicionais do Técnico ---\n${observations}`;
                     }
-
-                    // --- ATUALIZAÇÃO: Guardar conversa original para REFINAMENTO ---
-                    const originalFullConversation = fullConversation; 
                     
                     try {
-                        // --- PASSO 1: Envia para Anonimizar (Novo Comando) ---
                         chrome.runtime.sendMessage(
-                            { command: 'anonymizeConversation', conversation: originalFullConversation }, 
+                            { command: 'anonymizeConversation', conversation: fullConversation }, 
                             (response) => {
                                 try {
                                     if (chrome.runtime.lastError || (response && response.error)) {
                                         const errorMsg = chrome.runtime.lastError ? chrome.runtime.lastError.message : response.error;
-                                        console.error('[ContentScript] Erro no PASSO 1 (Anonimizar):', errorMsg);
-                                        throw new Error(errorMsg); // Cai no catch
+                                        throw new Error(errorMsg);
                                     }
 
                                     if (response && response.anonymizedText) {
-                                        // --- SUCESSO PASSO 1 ---
                                         console.log('[ContentScript] PASSO 1/2 concluído. A enviar para resumir...');
                                         currentConfirmYes.querySelector('.crx-button-text').textContent = 'A resumir (2/2)...';
                                         
-                                        // --- ATUALIZAÇÃO: Guardar contexto ANONIMIZADO para refinamento ---
-                                        contextForRefinement = response.anonymizedText;
+                                        // --- ATUALIZAÇÃO: Salva o contexto ANONIMIZADO no modal ---
+                                        modalContainer.conversationContext = response.anonymizedText;
                                         
-                                        // --- PASSO 2: Envia para Resumir (Comando Existente da Nuvem) ---
                                         chrome.runtime.sendMessage(
                                             { command: 'summarizeConversation', conversation: response.anonymizedText },
                                             (summaryResponse) => {
                                                 try {
-                                                    // --- Reativa os botões em qualquer cenário (sucesso ou erro) ---
                                                     currentConfirmYes.classList.remove('loading');
                                                     currentConfirmYes.querySelector('.crx-button-text').textContent = 'Sim';
                                                     currentConfirmYes.disabled = false;
@@ -616,21 +569,15 @@ const VerdanaDeskHandler = {
 
                                                     if (chrome.runtime.lastError || (summaryResponse && summaryResponse.error)) {
                                                         const errorMsg = chrome.runtime.lastError ? chrome.runtime.lastError.message : summaryResponse.error;
-                                                        console.error('[ContentScript] Erro no PASSO 2 (Resumir):', errorMsg);
-                                                        throw new Error(errorMsg); // Cai no catch
+                                                        throw new Error(errorMsg);
                                                     }
 
                                                     if (summaryResponse && summaryResponse.summary) {
-                                                        // --- SUCESSO FINAL ---
                                                         playNotificationSound();
-                                                        // const originalReport = VerdanaDeskHandler.extractReportBaseData(); // <-- REMOVIDO
-                                                        
-                                                        // --- ATUALIZAÇÃO: Remove prefixo ---
                                                         currentReportTextarea.value = summaryResponse.summary;
                                                         if (observations.trim() !== '') {
                                                             currentReportTextarea.value += `\n\nObservações Adicionais:\n${observations}`;
                                                         }
-                                                        
                                                         currentViewConfirm.style.display = 'none';
                                                         currentView2.style.display = 'flex';
                                                     
@@ -638,7 +585,6 @@ const VerdanaDeskHandler = {
                                                         throw new Error('Resposta inválida do PASSO 2 (Resumir).');
                                                     }
                                                 } catch (e) {
-                                                    // --- Erro no callback do PASSO 2 ---
                                                     console.error('[ContentScript] Erro fatal no callback (PASSO 2):', e.message);
                                                     currentConfirmYes.classList.remove('loading');
                                                     currentConfirmYes.querySelector('.crx-button-text').textContent = 'Sim';
@@ -646,7 +592,7 @@ const VerdanaDeskHandler = {
                                                     currentConfirmNo.disabled = false;
                                                     currentViewConfirm.style.display = 'none';
                                                     currentView1.style.display = 'flex';
-                                                    currentObsTextarea.value = `Erro ao resumir (2/2): ${e.message}`;
+                                                    currentObsTextarea.value = `Erro (2/2): ${e.message}. Verifique as Opções.`;
                                                     currentObsTextarea.style.color = 'red';
                                                 }
                                             }
@@ -655,7 +601,6 @@ const VerdanaDeskHandler = {
                                         throw new Error('Resposta inválida do PASSO 1 (Anonimizar).');
                                     }
                                 } catch (e) {
-                                    // --- Erro no callback do PASSO 1 ---
                                     console.error('[ContentScript] Erro fatal no callback (PASSO 1):', e.message);
                                     currentConfirmYes.classList.remove('loading');
                                     currentConfirmYes.querySelector('.crx-button-text').textContent = 'Sim';
@@ -663,7 +608,7 @@ const VerdanaDeskHandler = {
                                     currentConfirmNo.disabled = false;
                                     currentViewConfirm.style.display = 'none';
                                     currentView1.style.display = 'flex';
-                                    currentObsTextarea.value = `Erro ao anonimizar (1/2): ${e.message}`;
+                                    currentObsTextarea.value = `Erro (1/2): ${e.message}. Verifique o Ollama/Opções.`;
                                     currentObsTextarea.style.color = 'red';
                                 }
                             }
@@ -673,7 +618,7 @@ const VerdanaDeskHandler = {
                         throw error; 
                     }
                 } catch (error) {
-                    console.error('[ContentScript] Erro no listener do botão "Sim" (Novo Fluxo):', error.message);
+                    console.error('[ContentScript] Erro no listener "Sim" (Novo Fluxo):', error.message);
                     document.getElementById('crx-modal-container')?.remove();
                 }
             });
@@ -690,7 +635,6 @@ const VerdanaDeskHandler = {
                 }
             }, 0);
         
-        // --- Catch principal ---
         } catch (e) {
             console.error('[Gerador de Resumo] Erro fatal ao lidar com clique (Verdana):', e.message);
         }
@@ -739,13 +683,10 @@ const VerdanaDeskHandler = {
 
     extractReportBaseData: function() {
         const ticketTitle = VerdanaDeskHandler.getText('.v-card-text .v-row:nth-child(2) p span');
-        return `Título: ${ticketTitle}`; // Retorna apenas o título
+        return `Título: ${ticketTitle}`;
     }
 };
 
-/**
- * Manipulador para a estrutura GLPI (VerdanaDesk com botão "Solução")
- */
 const GlpiHandler = {
     siteIdentifier: "GLPI_Solucao",
 
@@ -769,10 +710,6 @@ const GlpiHandler = {
     },
 
     onTriggerButtonClick: function(event) {
-        // --- ATUALIZAÇÃO: Variável para guardar a conversa para o contexto ---
-        let contextForRefinement = "";
-
-        // --- Try...catch principal ---
         try {
             if (!isExtensionEnabled) {
                 console.log('[Gerador de Resumo] Extensão desativada (GLPI).');
@@ -783,31 +720,24 @@ const GlpiHandler = {
             event.preventDefault();
             console.log('[Gerador de Resumo] Clique no "Solução" (GLPI) detetado.');
 
-            const baseData = GlpiHandler.extractReportBaseData();
             const ticketData = GlpiHandler.extractTicketData();
             const chatLog = GlpiHandler.extractChatLog();
 
             const existingModal = document.getElementById('crx-modal-container');
             if (existingModal) existingModal.remove();
 
-            // Cria o modal (as variáveis aqui podem ficar "stale" após 5 min)
             const { modalContainer, view1, view2, viewConfirm, reportTextarea } = createModalUI();
             
             const generateButton = view1.querySelector('#crx-generate-button');
-            // const obsTextarea = view1.querySelector('#crx-obs-textarea'); // Movido para dentro dos listeners
             const confirmYesButton = viewConfirm.querySelector('#crx-confirm-yes');
             const confirmNoButton = viewConfirm.querySelector('#crx-confirm-no');
-
-            // --- ATUALIZAÇÃO: Lógica de refinamento movida para cá ---
             const aiRefineSubmit = modalContainer.querySelector('#crx-ai-refine-submit');
             const aiRefineCancel = modalContainer.querySelector('#crx-ai-refine-cancel');
             const aiRefinePrompt = modalContainer.querySelector('#crx-ai-refine-prompt');
             const aiRefineModal = modalContainer.querySelector('#crx-ai-refine-modal');
             const lightboxTextarea = modalContainer.querySelector('#crx-lightbox-textarea');
-            // --- NOVO: Referência ao botão de desfazer ---
             const aiUndoButton = modalContainer.querySelector('#crx-ai-undo-button');
             
-            // Remove o listener placeholder e anexa o real
             aiRefineSubmit.replaceWith(aiRefineSubmit.cloneNode(true));
             const aiRefineSubmitReal = modalContainer.querySelector('#crx-ai-refine-submit');
 
@@ -822,19 +752,17 @@ const GlpiHandler = {
                 }
         
                 aiRefineSubmitReal.classList.add('loading');
-                // --- ATUALIZAÇÃO: Texto do botão (não há mais passo 1/2) ---
                 aiRefineSubmitReal.querySelector('.crx-button-text').textContent = 'A refinar...';
                 aiRefineSubmitReal.disabled = true;
                 aiRefineCancel.disabled = true;
         
-                // --- ATUALIZAÇÃO: Removido o PASSO 1 (Anonimizar) daqui ---
-                // --- PASSO 2: Envia para Refinar com o contexto ---
                 chrome.runtime.sendMessage(
                     { 
                         command: 'refineSummary', 
                         summary: currentSummary, 
                         instruction: instruction,
-                        conversationContext: contextForRefinement // <-- Usa o contexto já guardado
+                        // --- ATUALIZADO: Lê o contexto do modalContainer ---
+                        conversationContext: modalContainer.conversationContext
                     }, 
                     (refineResponse) => {
                         try {
@@ -844,20 +772,14 @@ const GlpiHandler = {
                             aiRefineCancel.disabled = false;
         
                             if (refineResponse && refineResponse.refinedSummary) {
-                                // --- SUCESSO FINAL ---
-
-                                // --- CORREÇÃO: Salva o estado ATUAL (antes da mudança) no histórico ---
                                 const textBeforeRefine = lightboxTextarea.value;
-                                // Acessa o 'refineHistory' do modalContainer
                                 modalContainer.refineHistory.push(textBeforeRefine);
-                                aiUndoButton.disabled = false; // <-- Habilita o botão!
-
-                                lightboxTextarea.value = refineResponse.refinedSummary; // Atualiza o texto
-                                // Dispara evento de input para o listener 'hasMadeEdits'
+                                aiUndoButton.disabled = false;
+                                
+                                lightboxTextarea.value = refineResponse.refinedSummary;
                                 lightboxTextarea.dispatchEvent(new Event('input', { bubbles: true }));
-                                aiRefineModal.style.display = 'none'; // Fecha o modal de refinamento
+                                aiRefineModal.style.display = 'none';
                             } else if (refineResponse && refineResponse.error) {
-                                console.error('[ContentScript] Erro ao refinar:', refineResponse.error);
                                 throw new Error(refineResponse.error);
                             } else {
                                 throw new Error('Resposta inválida do refinamento.');
@@ -874,20 +796,14 @@ const GlpiHandler = {
                     }
                 );
             });
-            // --- FIM LÓGICA REFINAMENTO ---
-
 
             generateButton.addEventListener('click', () => {
-                // --- ATUALIZAÇÃO: Procura os elementos pelos IDs para garantir ---
                 document.getElementById('crx-view-1').style.display = 'none';
                 document.getElementById('crx-view-confirm').style.display = 'flex';
             });
 
-            // --- LÓGICA CONFIRMAÇÃO "NÃO" (Usar IA da Nuvem) ---
             confirmNoButton.addEventListener('click', () => {
-                 // --- Try...catch específico para o conteúdo do listener ---
                 try {
-                    // --- ATUALIZAÇÃO: Busca dinâmica de elementos ---
                     const currentConfirmYes = document.getElementById('crx-confirm-yes');
                     const currentConfirmNo = document.getElementById('crx-confirm-no');
                     const currentObsTextarea = document.getElementById('crx-obs-textarea');
@@ -910,17 +826,14 @@ const GlpiHandler = {
                         fullConversation += `\n\n--- Observações Adicionais do Técnico ---\n${observations}`;
                     }
 
-                    // --- ATUALIZAÇÃO: Guardar conversa para contexto ---
-                    contextForRefinement = fullConversation;
+                    // --- ATUALIZAÇÃO: Salva o contexto no modal ---
+                    modalContainer.conversationContext = fullConversation;
                     
-                    // --- Try...catch para sendMessage ---
                     try {
                         chrome.runtime.sendMessage(
-                            { command: 'summarizeConversation', conversation: fullConversation }, // Comando da Nuvem
+                            { command: 'summarizeConversation', conversation: fullConversation },
                             (response) => {
-                                // --- Try...catch para o callback ---
                                 try {
-                                    // Reativa botões
                                     currentConfirmNo.classList.remove('loading');
                                     currentConfirmNo.disabled = false;
                                     currentConfirmYes.disabled = false;
@@ -933,8 +846,6 @@ const GlpiHandler = {
                                     
                                     if (response && response.summary) {
                                         playNotificationSound();
-                                        
-                                        // --- ATUALIZAÇÃO: Remove prefixo ---
                                         currentReportTextarea.value = response.summary;
                                         if (observations.trim() !== '') {
                                             currentReportTextarea.value += `\n\nObservações Adicionais:\n${observations}`;
@@ -947,7 +858,7 @@ const GlpiHandler = {
                                         if (currentViewConfirm) currentViewConfirm.style.display = 'none';
                                         if (currentView1) currentView1.style.display = 'flex';
                                         if (currentObsTextarea) {
-                                            currentObsTextarea.value = `Erro ao gerar resumo (Nuvem): ${response.error}`;
+                                            currentObsTextarea.value = `Erro: ${response.error}. Verifique as Opções da extensão.`;
                                             currentObsTextarea.style.color = 'red';
                                         }
                                     } else {
@@ -959,30 +870,25 @@ const GlpiHandler = {
                                             currentObsTextarea.style.color = 'red';
                                         }
                                     }
-                                // --- Catch para o callback ---
                                 } catch (e) {
                                     console.error('[ContentScript] Erro fatal no callback (GLPI Nuvem):', e.message);
                                     document.getElementById('crx-modal-container')?.remove();
                                 }
                             }
                         );
-                    // --- Catch para sendMessage ---
                      } catch (error) {
                          console.error('[ContentScript] Falha ao enviar mensagem (GLPI Nuvem):', error.message);
-                         throw error; // Re-lança para ser pego pelo catch externo do listener
+                         throw error;
                      }
-                // --- Catch específico para o conteúdo do listener ---
                 } catch (error) {
-                     console.error('[ContentScript] Erro no listener do botão "Não" (GLPI Nuvem):', error.message);
+                     console.error('[ContentScript] Erro no listener "Não" (GLPI Nuvem):', error.message);
                      document.getElementById('crx-modal-container')?.remove();
                 }
             });
 
-            // --- ATUALIZADO: LÓGICA CONFIRMAÇÃO "SIM" (FLUXO NOVO: Anonimizar Local -> Resumir Nuvem) ---
             confirmYesButton.addEventListener('click', () => {
                 try {
                     
-                    // --- Busca dinâmica de elementos ---
                     const currentConfirmYes = document.getElementById('crx-confirm-yes');
                     const currentConfirmNo = document.getElementById('crx-confirm-no');
                     const currentObsTextarea = document.getElementById('crx-obs-textarea');
@@ -991,7 +897,6 @@ const GlpiHandler = {
                     const currentReportTextarea = document.getElementById('crx-report-textarea');
                     const currentView1 = document.getElementById('crx-view-1');
 
-                    // --- PASSO 1: Anonimização ---
                     currentConfirmYes.classList.add('loading');
                     currentConfirmYes.querySelector('.crx-button-text').textContent = 'A anonimizar (1/2)...';
                     currentConfirmYes.disabled = true;
@@ -1006,36 +911,28 @@ const GlpiHandler = {
                     if (observations.trim() !== '') {
                         fullConversation += `\n\n--- Observações Adicionais do Técnico ---\n${observations}`;
                     }
-
-                    // --- ATUALIZAÇÃO: Guardar conversa original para REFINAMENTO ---
-                    const originalFullConversation = fullConversation;
                     
                     try {
-                        // --- PASSO 1: Envia para Anonimizar (Novo Comando) ---
                         chrome.runtime.sendMessage(
-                            { command: 'anonymizeConversation', conversation: originalFullConversation }, 
+                            { command: 'anonymizeConversation', conversation: fullConversation }, 
                             (response) => {
                                 try {
                                     if (chrome.runtime.lastError || (response && response.error)) {
                                         const errorMsg = chrome.runtime.lastError ? chrome.runtime.lastError.message : response.error;
-                                        console.error('[ContentScript] Erro no PASSO 1 (Anonimizar):', errorMsg);
-                                        throw new Error(errorMsg); // Cai no catch
+                                        throw new Error(errorMsg);
                                     }
 
                                     if (response && response.anonymizedText) {
-                                        // --- SUCESSO PASSO 1 ---
                                         console.log('[ContentScript] PASSO 1/2 concluído. A enviar para resumir...');
                                         currentConfirmYes.querySelector('.crx-button-text').textContent = 'A resumir (2/2)...';
                                         
-                                        // --- ATUALIZAÇÃO: Guardar contexto ANONIMIZADO para refinamento ---
-                                        contextForRefinement = response.anonymizedText;
+                                        // --- ATUALIZAÇÃO: Salva o contexto ANONIMIZADO no modal ---
+                                        modalContainer.conversationContext = response.anonymizedText;
                                         
-                                        // --- PASSO 2: Envia para Resumir (Comando Existente da Nuvem) ---
                                         chrome.runtime.sendMessage(
                                             { command: 'summarizeConversation', conversation: response.anonymizedText },
                                             (summaryResponse) => {
                                                 try {
-                                                    // --- Reativa os botões em qualquer cenário (sucesso ou erro) ---
                                                     currentConfirmYes.classList.remove('loading');
                                                     currentConfirmYes.querySelector('.crx-button-text').textContent = 'Sim ';
                                                     currentConfirmYes.disabled = false;
@@ -1043,15 +940,11 @@ const GlpiHandler = {
 
                                                     if (chrome.runtime.lastError || (summaryResponse && summaryResponse.error)) {
                                                         const errorMsg = chrome.runtime.lastError ? chrome.runtime.lastError.message : summaryResponse.error;
-                                                        console.error('[ContentScript] Erro no PASSO 2 (Resumir):', errorMsg);
-                                                        throw new Error(errorMsg); // Cai no catch
+                                                        throw new Error(errorMsg);
                                                     }
 
                                                     if (summaryResponse && summaryResponse.summary) {
-                                                        // --- SUCESSO FINAL ---
                                                         playNotificationSound();
-                                                        
-                                                        // --- ATUALIZAÇÃO: Remove prefixo ---
                                                         currentReportTextarea.value = summaryResponse.summary;
                                                         if (observations.trim() !== '') {
                                                             currentReportTextarea.value += `\n\nObservações Adicionais:\n${observations}`;
@@ -1064,7 +957,6 @@ const GlpiHandler = {
                                                         throw new Error('Resposta inválida do PASSO 2 (Resumir).');
                                                     }
                                                 } catch (e) {
-                                                    // --- Erro no callback do PASSO 2 ---
                                                     console.error('[ContentScript] Erro fatal no callback (PASSO 2):', e.message);
                                                     currentConfirmYes.classList.remove('loading');
                                                     currentConfirmYes.querySelector('.crx-button-text').textContent = 'Sim';
@@ -1072,7 +964,7 @@ const GlpiHandler = {
                                                     currentConfirmNo.disabled = false;
                                                     currentViewConfirm.style.display = 'none';
                                                     currentView1.style.display = 'flex';
-                                                    currentObsTextarea.value = `Erro ao resumir (2/2): ${e.message}`;
+                                                    currentObsTextarea.value = `Erro (2/2): ${e.message}. Verifique as Opções.`;
                                                     currentObsTextarea.style.color = 'red';
                                                 }
                                             }
@@ -1081,7 +973,6 @@ const GlpiHandler = {
                                         throw new Error('Resposta inválida do PASSO 1 (Anonimizar).');
                                     }
                                 } catch (e) {
-                                    // --- Erro no callback do PASSO 1 ---
                                     console.error('[ContentScript] Erro fatal no callback (PASSO 1):', e.message);
                                     currentConfirmYes.classList.remove('loading');
                                     currentConfirmYes.querySelector('.crx-button-text').textContent = 'Sim';
@@ -1089,7 +980,7 @@ const GlpiHandler = {
                                     currentConfirmNo.disabled = false;
                                     currentViewConfirm.style.display = 'none';
                                     currentView1.style.display = 'flex';
-                                    currentObsTextarea.value = `Erro ao anonimizar (1/2): ${e.message}`; // Corrigido 'loca' para 'e.message'
+                                    currentObsTextarea.value = `Erro (1/2): ${e.message}. Verifique o Ollama/Opções.`;
                                     currentObsTextarea.style.color = 'red';
                                 }
                             }
@@ -1099,7 +990,7 @@ const GlpiHandler = {
                          throw error; 
                      }
                 } catch (error) {
-                     console.error('[ContentScript] Erro no listener do botão "Sim" (Novo Fluxo):', error.message);
+                     console.error('[ContentScript] Erro no listener "Sim" (Novo Fluxo):', error.message);
                      document.getElementById('crx-modal-container')?.remove();
                 }
             });
@@ -1110,7 +1001,6 @@ const GlpiHandler = {
                 modalContainer.classList.add('glpi-modal-override');
             }, 100);
         
-        // --- Catch principal ---
         } catch (e) {
             console.error('[Gerador de Resumo] Erro fatal ao lidar com clique (GLPI):', e.message);
         }
@@ -1248,7 +1138,7 @@ const GlpiHandler = {
                 ticketTitle = fullTitle;
             }
         }
-         return `Título: ${ticketTitle} (${ticketId})`; // Retorna Título (ID)
+         return `Título: ${ticketTitle} (${ticketId})`;
     }
 };
 // --- Fim do Handler: GLPI ---
@@ -1258,10 +1148,6 @@ const GlpiHandler = {
 
 let activeHandler = null; 
 
-/**
- * Função chamada pelo MutationObserver.
- * Tenta detetar o handler e, se encontrado, procura o botão.
- */
 function onMutation() {
     if (!isExtensionEnabled) {
         return;
@@ -1285,16 +1171,11 @@ function onMutation() {
         }
     }
 
-    // Chama a função findTriggerButton do handler ativo
     if (activeHandler && !document.querySelector('[data-crx-listener="true"]')) {
         activeHandler.findTriggerButton();
     }
 }
 
-
-/**
- * Determina qual handler (lógica de site) usar com base no conteúdo da página.
- */
 function detectAndSelectHandler() {
     const finalizarButtonSpan = Array.from(document.querySelectorAll('span.v-btn__content')).find(span => span.textContent.trim() === 'Finalizar');
     if (finalizarButtonSpan && finalizarButtonSpan.closest('button')) {
@@ -1308,12 +1189,9 @@ function detectAndSelectHandler() {
          return GlpiHandler;
      }
 
-    return null; // Nenhum handler compatível encontrado
+    return null;
 }
 
-/**
- * Inicia ou para de observar a página.
- */
 function setupObserver(enable) {
     if (pageObserver) {
         pageObserver.disconnect();
@@ -1323,7 +1201,6 @@ function setupObserver(enable) {
     
     document.querySelectorAll('[data-crx-listener="true"]').forEach(btn => {
         btn.removeAttribute('data-crx-listener');
-        // Remove listeners de ambos os handlers para garantir
         if (typeof VerdanaDeskHandler !== 'undefined' && typeof VerdanaDeskHandler.onTriggerButtonClick === 'function') {
              btn.removeEventListener('click', VerdanaDeskHandler.onTriggerButtonClick); 
         }
@@ -1337,7 +1214,7 @@ function setupObserver(enable) {
         console.log('[Gerador de Resumo] Ativado. Iniciando MutationObserver...');
         pageObserver = new MutationObserver(onMutation);
         pageObserver.observe(document.body, { childList: true, subtree: true });
-        onMutation(); // Tenta executar imediatamente
+        onMutation();
     } else {
         console.log('[Gerador de Resumo] Desativado.');
     }
@@ -1360,9 +1237,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
      return false; 
 });
 
-// Verifica o estado inicial quando a página carrega
 chrome.storage.sync.get(['extensionEnabled'], (result) => {
     isExtensionEnabled = !!result.extensionEnabled;
     setupObserver(isExtensionEnabled);
 });
-

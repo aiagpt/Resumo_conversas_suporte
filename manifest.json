@@ -1,7 +1,7 @@
 {
     "manifest_version": 3,
     "name": "Gerador de Resumo",
-    "version": "1.3",
+    "version": "1.4",
     "description": "Gera um resumo de conversas a partir de uma página.",
     "permissions": [
         "storage",
@@ -10,8 +10,8 @@
     ],
     "host_permissions": [
         "https://*.verdanadesk.com/*",
-        "https://generativethreelanguage.googleapis.com/",
-        "http://10.3.129.108:11434/*"
+        "https://generativelanguage.googleapis.com/",
+        "https://*.discord.com/*"
     ],
     "action": {
         "default_popup": "popup.html",
@@ -21,6 +21,7 @@
             "128": "images/icon128.png"
         }
     },
+    "options_page": "options.html",
     "background": {
         "service_worker": "background.js"
     },
@@ -45,7 +46,10 @@
     "web_accessible_resources": [
         {
             "resources": [
-                "notificacao.mp3"
+                "notificacao.mp3",
+                "options.html",
+                "options.css",
+                "options.js"
             ],
             "matches": [
                 "https://*.verdanadesk.com/*"
@@ -53,4 +57,3 @@
         }
     ]
 }
-
