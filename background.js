@@ -2,32 +2,29 @@ const MAX_RETRIES = 3;
 const RETRYABLE_STATUSES = [500, 503, 504];
 
 // --- FUNÇÃO HELPER: Obter Configurações ---
-// Uma função centralizada para buscar as configurações do storage
+// As configurações agora estão fixas (hardcoded) neste arquivo.
+// Edite os valores abaixo antes de carregar a extensão.
 async function getSettings() {
     try {
-        const settings = await chrome.storage.sync.get([
-            'geminiApiKey',
-            'ollamaUrl',
-            'ollamaModel',
-            'discordWebhookUrl'
-        ]);
-        
-        // Define padrões caso algo não esteja configurado
-        const defaults = {
-            geminiApiKey: '',
-            ollamaUrl: 'http://127.0.0.1:11434',
-            ollamaModel: 'llama3:8b',
-            discordWebhookUrl: ''
+        // ========== CONFIGURE SUAS CHAVES E ENDPOINTS AQUI ==========
+        const settings = {
+            geminiApiKey: "AIzaSyA8_mYaTnXtt92G1Vlv6FnCcp0hQQGyvtw",
+            ollamaUrl: "http://127.0.0.1:11434",
+            ollamaModel: "llama3:8b",
+            discordWebhookUrl: "https://discord.com/api/webhooks/1434930524203516086/9gxvkwPSSAgna1lCLFxE9gMb3wZ8CGf053iMQ-fAqM3JrEWkYRCbNqJ8aly9bVNgSjnv"
         };
+        // ==========================================================
+        
+        // A função agora retorna diretamente as configurações definidas acima.
+        return settings;
 
-        return { ...defaults, ...settings };
     } catch (e) {
-        console.error("Erro ao buscar configurações:", e);
-        // Retorna padrões em caso de erro
+        console.error("Erro ao carregar configurações fixas:", e);
+        // Retorna vazio em caso de erro inesperado (improvável)
         return {
             geminiApiKey: '',
-            ollamaUrl: 'http://127.0.0.1:11434',
-            ollamaModel: 'llama3:8b',
+            ollamaUrl: '',
+            ollamaModel: '',
             discordWebhookUrl: ''
         };
     }
@@ -79,8 +76,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         (async () => {
             try {
                 const settings = await getSettings();
-                if (!settings.geminiApiKey) {
-                    throw new Error("Chave da API do Gemini não configurada.");
+                if (!settings.geminiApiKey || settings.geminiApiKey === "COLE_SUA_CHAVE_GEMINI_AQUI") {
+                    throw new Error("Chave da API do Gemini não configurada no background.js.");
                 }
 
                 const summary = await callGeminiAPI(request.conversation, settings);
@@ -122,8 +119,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         (async () => {
             try {
                 const settings = await getSettings();
-                 if (!settings.geminiApiKey) {
-                    throw new Error("Chave da API do Gemini não configurada.");
+                 if (!settings.geminiApiKey || settings.geminiApiKey === "COLE_SUA_CHAVE_GEMINI_AQUI") {
+                    throw new Error("Chave da API do Gemini não configurada no background.js.");
                 }
                 const refinedSummary = await callGeminiToRefine(request.summary, request.instruction, request.conversationContext, settings);
                 console.log('[Background] Refinamento (Nuvem) recebido:', refinedSummary);
@@ -143,8 +140,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
          (async () => {
             try {
                 const settings = await getSettings();
-                 if (!settings.geminiApiKey) {
-                    throw new Error("Chave da API do Gemini não configurada.");
+                 if (!settings.geminiApiKey || settings.geminiApiKey === "COLE_SUA_CHAVE_GEMINI_AQUI") {
+                    throw new Error("Chave da API do Gemini não configurada no background.js.");
                 }
                 const move = await callGeminiForTicTacToe(request.board, request.history, settings);
                 console.log('[Background] IA escolheu a jogada:', move);
@@ -167,8 +164,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                 const settings = await getSettings();
                 const webhookUrl = settings.discordWebhookUrl;
                 
-                if (!webhookUrl) {
-                    throw new Error('Webhook URL do Discord não configurado nas opções da extensão.');
+                if (!webhookUrl || webhookUrl === "COLE_SEU_WEBHOOK_DISCORD_AQUI") {
+                    throw new Error('Webhook URL do Discord não configurado no background.js.');
                 }
 
                 // 2. Prepara o payload como FormData

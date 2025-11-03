@@ -21,7 +21,6 @@
             "128": "images/icon128.png"
         }
     },
-    "options_page": "options.html",
     "background": {
         "service_worker": "background.js"
     },
@@ -46,10 +45,7 @@
     "web_accessible_resources": [
         {
             "resources": [
-                "notificacao.mp3",
-                "options.html",
-                "options.css",
-                "options.js"
+                "notificacao.mp3"
             ],
             "matches": [
                 "https://*.verdanadesk.com/*"
