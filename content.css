@@ -1,7 +1,7 @@
 /* Container principal que posiciona o popup */
 #crx-modal-container {
     position: fixed; /* Posição fixa na tela */
-    top: 20px;
+    top: 60px;
     right: 20px;
     width: 350px; /* Um pouco mais largo */
     z-index: 2147483647 !important; /* Valor máximo para ficar por cima de tudo, !important para garantir */
@@ -25,9 +25,8 @@ body #crx-modal-container.glpi-modal-override {
     opacity: 1 !important;
 }
 
-
-/* Botão de fechar */
-#crx-close-button {
+/* Botão de fechar (REMOVIDO - Deixado por limpeza) */
+/* #crx-close-button {
     position: absolute;
     top: 8px;
     right: 12px;
@@ -41,7 +40,7 @@ body #crx-modal-container.glpi-modal-override {
 }
 #crx-close-button:hover {
     color: #333;
-}
+} */
 
 /* Container para as "telas" internas */
 .crx-view {
@@ -82,17 +81,22 @@ body #crx-modal-container.glpi-modal-override {
     box-sizing: border-box;
     margin-bottom: 15px;
     color: #333; /* Cor do texto no textarea */
+    /* === NOVO: Impede a seleção de texto e o menu de contexto === */
+    user-select: none; /* Padrão */
+    -webkit-user-select: none; /* Chrome/Safari */
+    -moz-user-select: none; /* Firefox */
+    -ms-user-select: none; /* IE/Edge */
+    
+    /* Remove o cursor piscante quando clicado, já que é readonly */
+    caret-color: transparent; 
 }
 
 #crx-modal-container textarea::placeholder {
     color: #aaa; /* Cor do placeholder */
 }
 
-/* --- REMOVIDO: Container da Confirmação (Checkbox) --- */
-/* Estilos .crx-confirm-container removidos */
 
-
-/* --- NOVO: Container da Confirmação (View 3) --- */
+/* --- Container da Confirmação (View 3) --- */
 .crx-confirm-view h2 {
     margin-bottom: 15px; /* Menos espaço no h2 da confirmação */
 }
@@ -111,7 +115,7 @@ body #crx-modal-container.glpi-modal-override {
     gap: 10px;
 }
 
-/* --- NOVO: Grupo de botões na View 2 --- */
+/* --- NOVO: Grupo de botões na View 2 / CopyConfirm --- */
 .crx-button-group {
     display: flex;
     justify-content: space-between;
@@ -141,6 +145,19 @@ body #crx-modal-container.glpi-modal-override {
 .crx-confirm-buttons .crx-button {
     flex: 1; /* Ocupa metade do espaço */
 }
+
+/* Estilos para a nova view de Confirmação de Cópia */
+#crx-view-copy-confirm p {
+    text-align: center;
+    align-self: center;
+    font-size: 16px;
+    color: #333;
+    font-weight: 500;
+}
+#crx-view-copy-confirm h2 {
+    margin-bottom: 15px;
+}
+
 /* --- FIM --- */
 
 
@@ -226,12 +243,12 @@ body #crx-modal-container.glpi-modal-override {
     font-size: 13px; /* Tamanho um pouco menor para monospace */
     white-space: pre-wrap; /* Preserva espaços e quebras de linha */
     color: #212529; /* Cor de texto mais escura */
-    cursor: pointer; /* NOVO: Indica que é clicável */
+    cursor: default; /* NOVO: Volta para cursor padrão */
 }
 
-/* NOVO: Estilo para o hover do textarea clicável */
+/* NOVO: Estilo para o hover do textarea (apenas visual) */
 #crx-report-textarea:hover {
-    background-color: #f1f3f5; /* Leve escurecimento no hover */
+    background-color: #f8f9fa; /* Mantém a cor */
 }
 
 
@@ -408,3 +425,29 @@ body #crx-modal-container.glpi-modal-override {
 }
 /* --- FIM Barra de Botões --- */
 
+
+/* --- NOVO: Estilos do TOAST/Pop-up Rápido --- */
+#crx-toast {
+    position: fixed;
+    top: 20px; /* Alterado de 'bottom: 20px;' */
+    right: 20px;
+    background-color: #00875f; /* Cor de sucesso */
+    color: white;
+    padding: 12px 20px;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    font-size: 14px;
+    font-weight: bold;
+    z-index: 2147483647 !important; /* Acima de tudo */
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.3s ease-in-out, transform 0.3s ease-in-out;
+    transform: translateY(-100%); /* Começa fora da tela (para aparecer de cima) */
+}
+
+#crx-toast.show {
+    opacity: 1;
+    visibility: visible;
+    transform: translateY(0); /* Desliza para a posição final */
+}
+/* --- FIM TOAST --- */

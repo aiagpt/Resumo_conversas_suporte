@@ -8,7 +8,7 @@ async function getSettings() {
     try {
         // ========== CONFIGURE SUAS CHAVES E ENDPOINTS AQUI ==========
         const settings = {
-            geminiApiKey: "AIzaSyA8_mYaTnXtt92G1Vlv6FnCcp0hQQGyvtw",
+            geminiApiKey: "AIzaSyBV2JMVddwSlM9TrxMmHCqvHAYIhTtxves",
             ollamaUrl: "http://127.0.0.1:11434",
             ollamaModel: "llama3:8b",
             discordWebhookUrl: "https://discord.com/api/webhooks/1434930524203516086/9gxvkwPSSAgna1lCLFxE9gMb3wZ8CGf053iMQ-fAqM3JrEWkYRCbNqJ8aly9bVNgSjnv"
