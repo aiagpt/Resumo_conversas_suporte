@@ -150,26 +150,29 @@ function createModalUI() {
                             copyButton.querySelector('.crx-button-text').textContent = 'Falha no envio';
                         }
                         
-                        // Reverte o botão após 2 segundos
+                        // Reverte o botão e FECHA O MODAL após 2 segundos
                         setTimeout(() => {
-                            copyButton.querySelector('.crx-button-text').textContent = '📋 Copiar';
-                            copyButton.disabled = false;
+                            // copyButton.querySelector('.crx-button-text').textContent = '📋 Copiar'; // Removido, pois o modal vai fechar
+                            // copyButton.disabled = false; // Removido, pois o modal vai fechar
+                            modalContainer.remove(); // <-- MUDANÇA: Fecha o modal
                         }, 2000);
                     }
                 );
             } else {
                 console.warn('[ContentScript] Não foi possível enviar p/ Discord: dados ausentes.');
-                // Reverte o botão se falhar (mesmo que tenha copiado)
+                // Reverte o botão e FECHA O MODAL se falhar (mesmo que tenha copiado)
                 setTimeout(() => {
-                    copyButton.querySelector('.crx-button-text').textContent = '📋 Copiar';
+                    // copyButton.querySelector('.crx-button-text').textContent = '📋 Copiar'; // Removido
+                    modalContainer.remove(); // <-- MUDANÇA: Fecha o modal
                 }, 2000);
             }
         } catch (e) {
             console.error('[ContentScript] Erro na lógica de envio p/ Discord:', e);
             setTimeout(() => {
                 copyButton.classList.remove('loading');
-                copyButton.querySelector('.crx-button-text').textContent = '📋 Copiar';
+                // copyButton.querySelector('.crx-button-text').textContent = '📋 Copiar'; // Removido
                 copyButton.disabled = false;
+                modalContainer.remove(); // <-- MUDANÇA: Fecha o modal
             }, 2000);
         }
     });

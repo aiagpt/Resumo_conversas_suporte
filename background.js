@@ -1,5 +1,5 @@
-const MAX_RETRIES = 3;
-const RETRYABLE_STATUSES = [500, 503, 504];
+const MAX_RETRIES = 3; // Mantido para a lógica do Ollama
+const GEMINI_RETRY_TIMEOUT_MS = 20000; // NOVO: 10 segundos de limite para o Gemini
 
 // --- FUNÇÃO HELPER: Obter Configurações ---
 // As configurações agora estão fixas (hardcoded) neste arquivo.
@@ -84,7 +84,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                 console.log('[Background] Resumo (Nuvem) recebido:', summary);
                 sendResponse({ summary: summary });
             } catch (error) {
-                console.error('[Background] Erro final na API (Nuvem) após tentativas:', error);
+                // O erro final (após o tempo limite) é capturado aqui
+                console.error('[Background] Erro final na API (Nuvem) após tempo limite:', error);
                 sendResponse({ error: error.message });
             }
         })();
@@ -126,7 +127,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                 console.log('[Background] Refinamento (Nuvem) recebido:', refinedSummary);
                 sendResponse({ refinedSummary: refinedSummary });
             } catch (error) {
-                console.error('[Background] Erro final na API (Refinamento) após tentativas:', error);
+                // O erro final (após o tempo limite) é capturado aqui
+                console.error('[Background] Erro final na API (Refinamento) após tempo limite:', error);
                 sendResponse({ error: error.message });
             }
         })();
@@ -193,6 +195,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                 formData.append('file1', contextBlob, 'contexto_conversa.txt');
 
                 // 3. Envia o POST para o Discord
+                // Esta chamada não tem lógica de retry, mas pode ser adicionada se necessário
                 const response = await fetch(webhookUrl, {
                     method: 'POST',
                     body: formData // fetch define o Content-Type 'multipart/form-data' automaticamente
@@ -260,6 +263,9 @@ async function callOllamaAPI_Anonymize_IdentifyJson(conversation, settings) {
     
     const OLLAMA_URL = settings.ollamaUrl + "/api/generate"; // Adiciona /api/generate
     const OLLAMA_MODEL = settings.ollamaModel;
+    
+    // A lista de status "tentáveis" do Ollama permanece a mesma
+    const OLLAMA_RETRYABLE_STATUSES = [500, 503, 504];
 
     const payload = {
         model: OLLAMA_MODEL,
@@ -270,6 +276,8 @@ async function callOllamaAPI_Anonymize_IdentifyJson(conversation, settings) {
     let lastError = null;
     let modifiedConversation = conversation;
 
+    // A lógica do Ollama permanece com MAX_RETRIES, pois é uma chamada local
+    // e não queremos ficar 10 segundos à espera de uma falha local.
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
         try {
             const response = await fetch(OLLAMA_URL, {
@@ -279,7 +287,7 @@ async function callOllamaAPI_Anonymize_IdentifyJson(conversation, settings) {
             });
 
             if (!response.ok) {
-                if (RETRYABLE_STATUSES.includes(response.status)) {
+                if (OLLAMA_RETRYABLE_STATUSES.includes(response.status)) {
                     throw new Error(`Erro de servidor Ollama (HTTP ${response.status}).`);
                 }
                 let errorMsg = `status: ${response.status}`;
@@ -287,6 +295,7 @@ async function callOllamaAPI_Anonymize_IdentifyJson(conversation, settings) {
                     const errorBody = await response.json();
                     errorMsg = errorBody.error || errorMsg;
                 } catch (e) {}
+                // Erro permanente (ex: 404, 400) - não tenta de novo
                 throw new Error(`Falha na API Ollama (Anonimizar/JSON): ${errorMsg}. Verifique se o modelo '${OLLAMA_MODEL}' está disponível em ${settings.ollamaUrl}.`);
             }
 
@@ -328,11 +337,12 @@ async function callOllamaAPI_Anonymize_IdentifyJson(conversation, settings) {
                 }
 
                 console.log('[Background] Substituição baseada em JSON concluída.');
-                return modifiedConversation;
+                return modifiedConversation; // Sucesso
 
             } catch (parseError) {
                 console.error('[Background] Erro ao analisar JSON da IA ou ao substituir texto:', parseError);
                 console.error('[Background] Resposta recebida da IA:', result.response);
+                // Erro de lógica/parse - não tenta de novo
                 throw new Error(`Falha ao processar a lista JSON da IA: ${parseError.message}. Verifique o prompt e a resposta da IA.`);
             }
 
@@ -344,16 +354,21 @@ async function callOllamaAPI_Anonymize_IdentifyJson(conversation, settings) {
                 if (error.message.includes('Failed to fetch')) {
                     throw new Error(`Não foi possível conectar ao Ollama em ${settings.ollamaUrl} após 3 tentativas.`);
                 }
-                break;
+                break; // Sai do loop se for a última tentativa
             }
+            
+            // Se for um erro permanente (lançado acima), não tenta de novo
             if (error.message.includes('Falha na API Ollama') || error.message.includes('Falha ao processar a lista JSON') || error.message.includes('A resposta da IA não contém um array JSON válido')) {
                 throw error;
             }
+            
+            // Se for um erro de servidor (5xx) ou 'Failed to fetch' (no catch), tenta de novo
             const delay = Math.pow(2, attempt) * 1000;
             console.warn(`Tentando de novo em ${delay}ms...`);
             await new Promise(resolve => setTimeout(resolve, delay));
         }
     }
+    // Se saiu do loop, lança o último erro
     throw lastError;
 }
 
@@ -406,9 +421,12 @@ Formato de Saída Obrigatório:
         ]
     };
 
+    // --- MUDANÇA: Lógica de 'for' trocada por 'while' baseado em tempo ---
+    const startTime = Date.now();
     let lastError = null;
+    let attempt = 1;
 
-    for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    while (Date.now() - startTime < GEMINI_RETRY_TIMEOUT_MS) {
         try {
             const response = await fetch(API_URL, {
                 method: 'POST',
@@ -417,12 +435,9 @@ Formato de Saída Obrigatório:
             });
 
             if (!response.ok) {
-                if (RETRYABLE_STATUSES.includes(response.status)) {
-                    throw new Error(`Erro de servidor Gemini (HTTP ${response.status}).`);
-                }
                 const errorBody = await response.text();
-                console.error('[Background] Erro permanente na API Gemini:', response.status, errorBody);
-                throw new Error(`Falha na API (HTTP ${response.status}). Verifique sua chave de API.`);
+                console.warn(`[Background] Resposta não-OK da API Gemini: ${response.status}`, errorBody);
+                throw new Error(`Falha na API (HTTP ${response.status}).`);
             }
 
             const result = await response.json();
@@ -430,7 +445,7 @@ Formato de Saída Obrigatório:
 
             if (candidate && candidate.content?.parts?.[0]?.text) {
                 if (candidate.finishReason === "STOP" || candidate.finishReason === "MAX_TOKENS") {
-                    return candidate.content.parts[0].text;
+                    return candidate.content.parts[0].text; // Sucesso
                 } else {
                     throw new Error(`O resumo não pôde ser gerado (Motivo: ${candidate.finishReason}).`);
                 }
@@ -440,20 +455,25 @@ Formato de Saída Obrigatório:
 
         } catch (error) {
             lastError = error;
-            console.warn(`[Background] API (Gemini) falhou (tentativa ${attempt}/${MAX_RETRIES}). Causa: ${error.message}`);
+            console.warn(`[Background] API (Gemini) falhou (tentativa ${attempt}). Causa: ${error.message}`);
+            
+            attempt++;
+            // Usa (attempt - 1) para o delay: 1s, 2s, 4s, 8s...
+            const delay = Math.pow(2, attempt - 1) * 1000; 
 
-            if (attempt === MAX_RETRIES) {
-                break;
+            // Verifica se a próxima espera vai ultrapassar o tempo limite
+            if (Date.now() - startTime + delay > GEMINI_RETRY_TIMEOUT_MS) {
+                console.warn(`[Background] Tempo limite de ${GEMINI_RETRY_TIMEOUT_MS}ms atingido. A desistir.`);
+                break; // Sai do loop 'while'
             }
-            if (error.message.includes('Falha na API') || error.message.includes('Motivo:')) {
-                 throw error;
-            }
-            const delay = Math.pow(2, attempt) * 1000;
-            console.warn(`Tentando de novo em ${delay}ms...`);
+
+            console.warn(`Tentando de novo em ${delay/1000}s...`);
             await new Promise(resolve => setTimeout(resolve, delay));
         }
-    }
+    } // Fim do loop 'while'
 
+    // Se saiu do loop (porque o tempo acabou), lança o último erro
+    console.error(`[Background] Erro final na API (Gemini) após ${Date.now() - startTime}ms.`, lastError);
     throw lastError;
 }
 
@@ -499,9 +519,12 @@ ${instruction}
         ]
     };
 
+    // --- MUDANÇA: Lógica de 'for' trocada por 'while' baseado em tempo ---
+    const startTime = Date.now();
     let lastError = null;
+    let attempt = 1;
 
-    for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    while (Date.now() - startTime < GEMINI_RETRY_TIMEOUT_MS) {
         try {
             const response = await fetch(API_URL, {
                 method: 'POST',
@@ -510,11 +533,8 @@ ${instruction}
             });
 
             if (!response.ok) {
-                if (RETRYABLE_STATUSES.includes(response.status)) {
-                    throw new Error(`Erro de servidor Gemini (HTTP ${response.status}).`);
-                }
                 const errorBody = await response.text();
-                console.error('[Background] Erro permanente na API Gemini (Refinamento):', response.status, errorBody);
+                console.warn(`[Background] Resposta não-OK da API Gemini (Refinamento): ${response.status}`, errorBody);
                 throw new Error(`Falha na API (HTTP ${response.status}).`);
             }
 
@@ -523,7 +543,7 @@ ${instruction}
 
             if (candidate && candidate.content?.parts?.[0]?.text) {
                 if (candidate.finishReason === "STOP" || candidate.finishReason === "MAX_TOKENS") {
-                    return candidate.content.parts[0].text;
+                    return candidate.content.parts[0].text; // Sucesso
                 } else {
                     throw new Error(`O refinamento não pôde ser gerado (Motivo: ${candidate.finishReason}).`);
                 }
@@ -533,25 +553,33 @@ ${instruction}
 
         } catch (error) {
             lastError = error;
-            console.warn(`[Background] API (Refinamento) falhou (tentativa ${attempt}/${MAX_RETRIES}). Causa: ${error.message}`);
+            console.warn(`[Background] API (Refinamento) falhou (tentativa ${attempt}). Causa: ${error.message}`);
+            
+            attempt++;
+            // Usa (attempt - 1) para o delay: 1s, 2s, 4s, 8s...
+            const delay = Math.pow(2, attempt - 1) * 1000; 
 
-            if (attempt === MAX_RETRIES) {
-                break;
+            // Verifica se a próxima espera vai ultrapassar o tempo limite
+            if (Date.now() - startTime + delay > GEMINI_RETRY_TIMEOUT_MS) {
+                console.warn(`[Background] Tempo limite de ${GEMINI_RETRY_TIMEOUT_MS}ms atingido. A desistir.`);
+                break; // Sai do loop 'while'
             }
-            if (error.message.includes('Falha na API') || error.message.includes('Motivo:')) {
-                 throw error;
-            }
-            const delay = Math.pow(2, attempt) * 1000;
-            console.warn(`Tentando de novo em ${delay}ms...`);
+
+            console.warn(`Tentando de novo em ${delay/1000}s...`);
             await new Promise(resolve => setTimeout(resolve, delay));
         }
-    }
-
+    } // Fim do loop 'while'
+    
+    // Se saiu do loop (porque o tempo acabou), lança o último erro
+    console.error(`[Background] Erro final na API (Refinamento) após ${Date.now() - startTime}ms.`, lastError);
     throw lastError;
 }
 
 // --- MODIFICADO: Aceita 'settings' como argumento ---
 async function callGeminiForTicTacToe(board, history, settings) {
+    // A lógica desta função (Jogo da Velha) permanece a mesma.
+    // Ela não usa um loop de retry, mas sim um "fallback"
+    // (escolher uma jogada aleatória), o que é aceitável para o jogo.
     
     const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${settings.geminiApiKey}`;
 
@@ -631,6 +659,8 @@ Analise o tabuleiro [${boardString}] e escolha o NÚMERO da melhor jogada possí
 
     } catch (error) {
         console.error('[Background] Erro na chamada da IA do Jogo da Velha:', error);
+        // Fallback: retorna uma jogada aleatória se a API falhar
         return availableMoves[Math.floor(Math.random() * availableMoves.length)];
     }
 }
+
