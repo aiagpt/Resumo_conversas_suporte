@@ -72,6 +72,21 @@ function setCopyBlockListeners(enable) {
     }
 }
 
+/**
+ * Fecha a UI da extensão removendo o modal e limpando listeners.
+ * Usado para o botão 'X' do GLPI e para o toggle.
+ */
+function closeAllListenersAndModal() {
+    const modalContainer = document.getElementById('crx-modal-container');
+    if (modalContainer) {
+        setCopyBlockListeners(false);
+        modalContainer.remove();
+        // Remove listener específico do botão 'X' do GLPI se ele existir
+        GlpiHandler.removeCloseListener();
+    }
+}
+
+
 // --- Lógica de UI (Genérica - Usada por ambos) ---
 function createModalUI() {
     let originalLightboxText = "";
@@ -152,9 +167,9 @@ function createModalUI() {
     const confirmCancelButton = lightboxContainer.querySelector('#crx-confirm-cancel');
     const aiFixButton = lightboxContainer.querySelector('#crx-ai-fix-button');
     const aiRefineModal = lightboxContainer.querySelector('#crx-ai-refine-modal');
-    const aiRefinePrompt = lightboxContainer.querySelector('#crx-ai-refine-prompt');
-    const aiRefineSubmit = lightboxContainer.querySelector('#crx-ai-refine-submit');
-    const aiRefineCancel = lightboxContainer.querySelector('#crx-ai-refine-cancel');
+    const aiRefinePrompt = modalContainer.querySelector('#crx-ai-refine-prompt');
+    const aiRefineSubmit = modalContainer.querySelector('#crx-ai-refine-submit');
+    const aiRefineCancel = modalContainer.querySelector('#crx-ai-refine-cancel');
     
     const copyConfirmCopyButton = viewCopyConfirm.querySelector('#crx-copy-confirm-copy-button');
     const copyConfirmReviewButton = viewCopyConfirm.querySelector('#crx-copy-confirm-review-button');
@@ -175,11 +190,7 @@ function createModalUI() {
         }
     }
     
-    function closeAllListenersAndModal() {
-        setCopyBlockListeners(false);
-        modalContainer.remove();
-    }
-
+    // closeAllListenersAndModal foi movida para o escopo global
 
     // --- Lógica do Botão "Copiar" (Realiza a cópia e fecha) ---
     copyConfirmCopyButton.addEventListener('click', () => executeCopyAndClose(reportTextarea, modalContainer, copyConfirmCopyButton));
@@ -293,7 +304,7 @@ function createModalUI() {
     // --- FIM Listeners do Lightbox ---
 
 
-    return { modalContainer, view1, view2, viewSecurity, viewCopyConfirm, reportTextarea, setCopyBlockListeners };
+    return { modalContainer, view1, view2, viewSecurity, viewCopyConfirm, reportTextarea };
 }
 
 
@@ -372,20 +383,17 @@ function executeCopyAndClose(reportTextarea, modalContainer, buttonElement) {
                     }
                     
                     // Fecha o modal após a tentativa de envio
-                    setCopyBlockListeners(false);
-                    modalContainer.remove(); 
+                    closeAllListenersAndModal(); 
                 }
             );
         } else {
             console.warn('[ContentScript] Não foi possível enviar p/ Discord: dados ausentes.');
             // Fecha o modal imediatamente se os dados estiverem ausentes
-            setCopyBlockListeners(false);
-            modalContainer.remove(); 
+            closeAllListenersAndModal(); 
         }
     } catch (e) {
         console.error('[ContentScript] Erro na lógica de envio p/ Discord:', e);
-        setCopyBlockListeners(false);
-        modalContainer.remove(); 
+        closeAllListenersAndModal(); 
     }
 }
 
@@ -483,6 +491,25 @@ function getTicketIdFromUrl() {
     return '[ID não encontrado]';
 }
 
+// --- FUNÇÃO HELPER: Encontrar o elemento clicável do botão 'X' do GLPI (ATUALIZADO) ---
+function findGlpiCloseTarget() {
+    // Procura o botão de fechar específico pela classe 'close-itil-answer'
+    const closeButtonByClass = document.querySelector('button.close-itil-answer');
+    
+    if (closeButtonByClass) {
+        console.log('[Gerador de Resumo] Botão de fechar GLPI encontrado via close-itil-answer.');
+        return closeButtonByClass;
+    }
+    
+    // Fallback: Procura o ícone (.ti-x) e o seu pai clicável (como na versão anterior)
+    const icon = document.querySelector('.ti-x');
+    if (icon) {
+        return icon.closest('button, a');
+    }
+    
+    return null;
+}
+
 // --- DEFINIÇÃO DOS HANDLERS ---
 
 const VerdanaDeskHandler = {
@@ -520,12 +547,19 @@ const VerdanaDeskHandler = {
         try {
             if (!isExtensionEnabled) return;
             
-            console.log('[Gerador de Resumo] Clique no "Finalizar" (Verdana) detetado. A aguardar overlay...');
-
+            // --- NOVO: LÓGICA DE FECHAMENTO (CORREÇÃO DE ESCOPO: setCopyBlockListeners é GLOBAL) ---
             const existingModal = document.getElementById('crx-modal-container');
-            if (existingModal) existingModal.remove();
+            if (existingModal) {
+                console.log('[Gerador de Resumo] Modal já aberto. Fechando ao segundo clique.');
+                closeAllListenersAndModal(); // Usa a função centralizada
+                return; // Para o processamento
+            }
+            // --- FIM LÓGICA DE FECHAMENTO ---
+
+            console.log('[Gerador de Resumo] Clique no "Finalizar" (Verdana) detetado. A aguardar overlay...');
             
-            const { modalContainer, view1, view2, viewSecurity, viewCopyConfirm, reportTextarea, setCopyBlockListeners } = createModalUI();
+            // O retorno de createModalUI não precisa mais de setCopyBlockListeners
+            const { modalContainer, view1, view2, viewSecurity, viewCopyConfirm, reportTextarea } = createModalUI();
             
             const generateButton = view1.querySelector('#crx-generate-button');
             const confirmYesButton = viewSecurity.querySelector('#crx-confirm-yes');
@@ -897,6 +931,8 @@ const VerdanaDeskHandler = {
 
 const GlpiHandler = {
     siteIdentifier: "GLPI_Solucao",
+    // Variável para armazenar o listener de fechar do GLPI (X)
+    glpiCloseListener: null,
 
     getTextSafe: function(selector, context = document) {
         const element = context.querySelector(selector);
@@ -917,6 +953,27 @@ const GlpiHandler = {
         });
     },
 
+    // NOVO: Função para limpar o listener do botão 'X'
+    removeCloseListener: function() {
+        if (this.glpiCloseListener) {
+            // Usa a função auxiliar para encontrar o alvo clicável
+            const closeTarget = findGlpiCloseTarget(); 
+            if (closeTarget) {
+                // Tenta restaurar o atributo se ele tiver sido removido
+                const storedToggle = closeTarget.getAttribute('data-crx-original-toggle');
+                if (storedToggle) {
+                     closeTarget.setAttribute('data-bs-toggle', storedToggle);
+                     closeTarget.removeAttribute('data-crx-original-toggle');
+                     console.log('[Gerador de Resumo] Atributo data-bs-toggle restaurado no botão X.');
+                }
+                
+                closeTarget.removeEventListener('click', this.glpiCloseListener, true);
+                console.log('[Gerador de Resumo] Listener do botão X (GLPI) removido.');
+            }
+            this.glpiCloseListener = null;
+        }
+    },
+
     onTriggerButtonClick: function(event) {
         try {
             if (!isExtensionEnabled) {
@@ -924,17 +981,27 @@ const GlpiHandler = {
                 return;
             }
             
-            event.stopPropagation();
+            // --- NOVO: FORÇA A INTERRUPÇÃO E FECHAMENTO ---
+            // Usamos stopImmediatePropagation e preventDefault para impedir o GLPI de fechar a janela
+            event.stopImmediatePropagation();
             event.preventDefault();
-            console.log('[Gerador de Resumo] Clique no "Solução" (GLPI) detetado.');
+
+            // Lógica de toggle
+            const existingModal = document.getElementById('crx-modal-container');
+            if (existingModal) {
+                console.log('[Gerador de Resumo] Modal já aberto. Fechando ao segundo clique.');
+                closeAllListenersAndModal(); // Usa a função centralizada
+                return; // Para o processamento
+            }
+            // --- FIM LÓGICA DE FECHAMENTO ---
+            
+            console.log('[Gerador de Resumo] Clique no "Solução" (GLPI) detetado. A abrir modal.');
 
             const ticketInfo = GlpiHandler.extractTicketData();
             const chatLog = GlpiHandler.extractChatLog();
-
-            const existingModal = document.getElementById('crx-modal-container');
-            if (existingModal) existingModal.remove();
             
-            const { modalContainer, view1, view2, viewSecurity, viewCopyConfirm, reportTextarea, setCopyBlockListeners } = createModalUI();
+            // O retorno de createModalUI não precisa mais de setCopyBlockListeners
+            const { modalContainer, view1, view2, viewSecurity, viewCopyConfirm, reportTextarea } = createModalUI();
             
             const generateButton = view1.querySelector('#crx-generate-button');
             const confirmYesButton = viewSecurity.querySelector('#crx-confirm-yes');
@@ -1225,6 +1292,44 @@ const GlpiHandler = {
                 document.body.appendChild(modalContainer);
                 console.log('[Gerador de Resumo] Modal injetado no body (GLPI).');
                 modalContainer.classList.add('glpi-modal-override');
+
+                // --- NOVO: Anexa listener ao botão de fechar (close-itil-answer) ---
+                const closeTarget = findGlpiCloseTarget(); 
+                if (closeTarget) {
+                    // 1. Guarda o valor original e remove o atributo que dispara o colapso do GLPI
+                    const originalToggle = closeTarget.getAttribute('data-bs-toggle');
+                    if (originalToggle) {
+                        closeTarget.removeAttribute('data-bs-toggle');
+                        closeTarget.setAttribute('data-crx-original-toggle', originalToggle); // Guarda original
+                        console.log('[Gerador de Resumo] Atributo data-bs-toggle removido.');
+                    }
+                    
+                    // 2. Armazena e anexa o nosso listener
+                    GlpiHandler.glpiCloseListener = (e) => {
+                        // OBRIGATÓRIO: O GLPI usa a fase de CAPTURA para fechar, 
+                        // então precisamos parar o evento aqui E no target.
+                        e.stopImmediatePropagation();
+                        e.preventDefault();
+                        
+                        // 3. Tenta restaurar o comportamento nativo antes de fechar nosso modal.
+                        const storedToggle = e.currentTarget.getAttribute('data-crx-original-toggle');
+                        if (storedToggle) {
+                             e.currentTarget.setAttribute('data-bs-toggle', storedToggle);
+                             e.currentTarget.removeAttribute('data-crx-original-toggle');
+                             console.log('[Gerador de Resumo] Atributo data-bs-toggle restaurado antes de fechar.');
+                        }
+                        
+                        closeAllListenersAndModal(); // Fecha nosso modal
+                        console.log('[Gerador de Resumo] Modal fechado via botão X do GLPI (Atributo removido).');
+                    };
+                    // Anexa o listener com fase de captura para ter prioridade (true)
+                    closeTarget.addEventListener('click', GlpiHandler.glpiCloseListener, true);
+                    console.log('[Gerador de Resumo] Listener do botão X (GLPI) anexado ao elemento pai clicável.');
+                } else {
+                     console.warn('[Gerador de Resumo] Botão X (close-itil-answer) do GLPI não encontrado após injeção.');
+                }
+                // --- FIM NOVO ---
+                
             }, 100);
         
         } catch (e) {
@@ -1381,6 +1486,37 @@ function onMutation() {
             pageObserver = null;
             console.log('[Gerador de Resumo] Botão gatilho encontrado e listener anexado. Observer parado.');
          }
+         // Adiciona o listener de fechar do GLPI aqui também, caso o botão apareça com atraso
+         if (activeHandler.siteIdentifier === "GLPI_Solucao") {
+             GlpiHandler.removeCloseListener(); // Remove o antigo se houver
+             setTimeout(() => {
+                 const closeTarget = findGlpiCloseTarget(); 
+                 if (closeTarget && !GlpiHandler.glpiCloseListener) { // Verifica se ainda não está ativo
+                     // Lógica de interceção e remoção de atributo repetida para a interceção tardia
+                     const originalToggle = closeTarget.getAttribute('data-bs-toggle');
+                     if (originalToggle) {
+                         closeTarget.removeAttribute('data-bs-toggle');
+                         closeTarget.setAttribute('data-crx-original-toggle', originalToggle);
+                     }
+                     
+                     GlpiHandler.glpiCloseListener = (e) => {
+                         e.stopImmediatePropagation();
+                         e.preventDefault();
+                         
+                         const storedToggle = e.currentTarget.getAttribute('data-crx-original-toggle');
+                         if (storedToggle) {
+                              e.currentTarget.setAttribute('data-bs-toggle', storedToggle);
+                              e.currentTarget.removeAttribute('data-crx-original-toggle');
+                         }
+                         
+                         closeAllListenersAndModal();
+                         console.log('[Gerador de Resumo] Modal fechado via botão X do GLPI (late binding).');
+                     };
+                     closeTarget.addEventListener('click', GlpiHandler.glpiCloseListener, true);
+                     console.log('[Gerador de Resumo] Listener do botão X (GLPI) anexado (late binding).');
+                 }
+             }, 500); // Dá um tempo para o GLPI carregar o botão
+         }
          return;
     }
 
@@ -1424,6 +1560,7 @@ function setupObserver(enable) {
     // Remove listeners existentes
     document.querySelectorAll('[data-crx-listener="true"]').forEach(btn => {
         btn.removeAttribute('data-crx-listener');
+        // Usa a mesma lógica para remover o listener, pois o evento é o mesmo (click)
         if (typeof VerdanaDeskHandler !== 'undefined' && typeof VerdanaDeskHandler.onTriggerButtonClick === 'function') {
              btn.removeEventListener('click', VerdanaDeskHandler.onTriggerButtonClick); 
         }
@@ -1432,6 +1569,9 @@ function setupObserver(enable) {
         }
     });
     activeHandler = null; 
+    
+    // Remove o listener do botão X do GLPI em qualquer caso
+    GlpiHandler.removeCloseListener(); 
 
     if (enable) {
         // Remove o toast de cópia se existir (caso o utilizador volte)
@@ -1447,6 +1587,13 @@ function setupObserver(enable) {
         // Remove o toast de cópia se existir
         const toast = document.getElementById('crx-toast');
         if (toast) toast.remove();
+        
+        // --- NOVO: Garante que o modal é fechado ao desativar a extensão ---
+        const existingModal = document.getElementById('crx-modal-container');
+        if (existingModal) {
+            closeAllListenersAndModal();
+        }
+        // --- FIM NOVO ---
     }
 }
 

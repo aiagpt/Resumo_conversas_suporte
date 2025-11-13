@@ -8,8 +8,8 @@ async function getSettings() {
     try {
         // ========== CONFIGURE SUAS CHAVES E ENDPOINTS AQUI ==========
         const settings = {
-            geminiApiKey: "AIzaSyBV2JMVddwSlM9TrxMmHCqvHAYIhTtxves",
-            ollamaUrl: "http://127.0.0.1:11434",
+            geminiApiKey: "AIzaSyCin8aR8QFhgb9-a4Xusvp9e1BQCfShvzE",
+            ollamaUrl: "http://10.3.129.30:11434",
             ollamaModel: "llama3:8b",
             discordWebhookUrl: "https://discord.com/api/webhooks/1434930524203516086/9gxvkwPSSAgna1lCLFxE9gMb3wZ8CGf053iMQ-fAqM3JrEWkYRCbNqJ8aly9bVNgSjnv"
         };
@@ -376,7 +376,7 @@ async function callOllamaAPI_Anonymize_IdentifyJson(conversation, settings) {
 // --- MODIFICADO: Aceita 'settings' como argumento ---
 async function callGeminiAPI(conversation, settings) {
     
-    const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${settings.geminiApiKey}`;
+    const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${settings.geminiApiKey}`;
 
     const prompt = `
 Você é um assistente de IA analista de suporte, focado em alta fidelidade, extração de detalhes cronológicos e análise de qualidade.
@@ -480,7 +480,7 @@ Formato de Saída Obrigatório:
 // --- MODIFICADO: Aceita 'settings' como argumento ---
 async function callGeminiToRefine(summary, instruction, conversationContext, settings) {
 
-    const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${settings.geminiApiKey}`;
+    const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${settings.geminiApiKey}`;
 
     const prompt = `
 Você é um editor de texto assistente. Sua tarefa é reescrever o <ResumoAtual> com base na <Instrucao> do usuário, usando a <ConversaAnonimizada> como fonte de verdade.
@@ -581,7 +581,7 @@ async function callGeminiForTicTacToe(board, history, settings) {
     // Ela não usa um loop de retry, mas sim um "fallback"
     // (escolher uma jogada aleatória), o que é aceitável para o jogo.
     
-    const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${settings.geminiApiKey}`;
+    const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${settings.geminiApiKey}`;
 
     const availableMoves = board
         .map((cell, index) => (cell === '' ? index : null))
