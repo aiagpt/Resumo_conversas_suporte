@@ -660,25 +660,24 @@ const VerdanaDeskHandler = {
                     currentObsTextarea.style.color = '#000';
                     setCopyBlockListeners(false);
 
+                    // === INÍCIO DA MODIFICAÇÃO TOON ===
                     const ticketInfo = VerdanaDeskHandler.extractTicketDataFromPopup();
-                    const chatLog = VerdanaDeskHandler.extractChatLog();
+                    const chatLogArray = VerdanaDeskHandler.extractChatLog(); // Agora retorna Array
                     const observations = currentObsTextarea.value;
+
+                    // Converte para TOON
+                    const toonPayload = convertToTOON(ticketInfo, chatLogArray, observations);
                     
-                    let fullConversation = "--- Informações do Ticket (do popup) ---\n" + ticketInfo.fullData +
-                                        "\n\n--- Histórico da Conversa (do chat) ---\n" + chatLog;
-
-                    if (observations.trim() !== '') {
-                        fullConversation += `\n\n--- Observações Adicionais do Técnico ---\n${observations}`;
-                    }
-
-                    // Salva o contexto no modal
-                    modalContainer.conversationContext = fullConversation;
+                    // Salva o contexto (TOON) no modal
+                    modalContainer.conversationContext = toonPayload;
                     // Salva o ID
                     modalContainer.ticketId = ticketInfo.id;
+                    // === FIM DA MODIFICAÇÃO TOON ===
                     
                     try {
                         chrome.runtime.sendMessage(
-                            { command: 'summarizeConversation', conversation: fullConversation },
+                            // Envia o payload TOON
+                            { command: 'summarizeConversation', conversation: toonPayload },
                             (response) => {
                                 try {
                                     currentConfirmNo.classList.remove('loading');
@@ -696,6 +695,7 @@ const VerdanaDeskHandler = {
                                         
                                         // INJETA SÓ O RESUMO
                                         currentReportTextarea.value = response.summary;
+                                        // Adiciona observações ao final do resumo (se houver)
                                         if (observations.trim() !== '') {
                                             currentReportTextarea.value += `\n\nObservações Adicionais:\n${observations}`;
                                         }
@@ -751,20 +751,22 @@ const VerdanaDeskHandler = {
                     currentObsTextarea.style.color = '#000';
                     setCopyBlockListeners(false);
 
+                    // === INÍCIO DA MODIFICAÇÃO TOON ===
                     const ticketInfo = VerdanaDeskHandler.extractTicketDataFromPopup();
-                    const chatLog = VerdanaDeskHandler.extractChatLog();
+                    const chatLogArray = VerdanaDeskHandler.extractChatLog(); // Agora retorna Array
                     const observations = currentObsTextarea.value;
-                    
-                    let fullConversation = "--- Informações do Ticket (do popup) ---\n" + ticketInfo.fullData +
-                                        "\n\n--- Histórico da Conversa (do chat) ---\n" + chatLog;
 
-                    if (observations.trim() !== '') {
-                        fullConversation += `\n\n--- Observações Adicionais do Técnico ---\n${observations}`;
-                    }
+                    // Converte para TOON
+                    const toonPayload = convertToTOON(ticketInfo, chatLogArray, observations);
+                    
+                    // Salva o ID (será usado no passo 2)
+                    modalContainer.ticketId = ticketInfo.id;
+                    // === FIM DA MODIFICAÇÃO TOON ===
                     
                     try {
                         chrome.runtime.sendMessage(
-                            { command: 'anonymizeConversation', conversation: fullConversation }, 
+                            // Envia o TOON para anonimizar
+                            { command: 'anonymizeConversation', conversation: toonPayload }, 
                             (response) => {
                                 try {
                                     if (chrome.runtime.lastError || (response && response.error)) {
@@ -778,10 +780,9 @@ const VerdanaDeskHandler = {
                                         
                                         // Salva o contexto ANONIMIZADO no modal
                                         modalContainer.conversationContext = response.anonymizedText;
-                                        // Salva o ID
-                                        modalContainer.ticketId = ticketInfo.id;
                                         
                                         chrome.runtime.sendMessage(
+                                            // Envia o TOON anonimizado para resumir
                                             { command: 'summarizeConversation', conversation: response.anonymizedText },
                                             (summaryResponse) => {
                                                 try {
@@ -800,6 +801,7 @@ const VerdanaDeskHandler = {
                                                         
                                                         // INJETA SÓ O RESUMO
                                                         currentReportTextarea.value = summaryResponse.summary;
+                                                        // Adiciona observações ao final do resumo (se houver)
                                                         if (observations.trim() !== '') {
                                                             currentReportTextarea.value += `\n\nObservações Adicionais:\n${observations}`;
                                                         }
@@ -818,7 +820,7 @@ const VerdanaDeskHandler = {
                                                     currentConfirmNo.disabled = false;
                                                     currentViewSecurity.style.display = 'none';
                                                     currentView1.style.display = 'flex';
-                                                    currentObsTextarea.value = `Erro (2/2): ${e.message}. Verifique as Opções.`;
+                                                    currentObsTextarea.value = `Erro (2/2): ${e.message}. Verifique as Opções da extensão.`;
                                                     currentObsTextarea.style.color = 'red';
                                                 }
                                             }
@@ -834,7 +836,8 @@ const VerdanaDeskHandler = {
                                     currentConfirmNo.disabled = false;
                                     currentViewSecurity.style.display = 'none';
                                     currentView1.style.display = 'flex';
-                                    currentObsTextarea.value = `Erro (1/2): ${e.message}. Verifique o Ollama/Opções.`;
+                                    // === CORREÇÃO DA MENSAGEM DE ERRO ===
+                                    currentObsTextarea.value = `Erro (1/2): ${e.message}. Verifique as Opções da extensão.`;
                                     currentObsTextarea.style.color = 'red';
                                 }
                             }
@@ -866,13 +869,16 @@ const VerdanaDeskHandler = {
         }
     },
 
+    // === MODIFICADO PARA RETORNAR ARRAY E LIMPAR ===
     extractChatLog: function() {
         const chatList = document.querySelector('#chatlist');
         if (!chatList) {
             console.warn('[ContentScript] Não foi possível encontrar #chatlist (Verdana).');
-            return "A conversa não foi encontrada.";
+            return []; // Retorna array vazio
         }
-        let chatText = "Início da Conversa:\n";
+        
+        let messagesArray = []; // MUDANÇA: Array em vez de string
+        
         const messages = chatList.querySelectorAll('.v-list-item');
         messages.forEach(msg => {
             const senderEl = msg.querySelector('.v-list-item-title span:not(.text-grey)');
@@ -884,13 +890,26 @@ const VerdanaDeskHandler = {
                 const time = timeEl.textContent.trim();
                 const clone = messageEl.cloneNode(true);
                 clone.querySelectorAll('br').forEach(br => br.replaceWith('\n'));
-                const message = clone.textContent.trim();
-                chatText += `[${time}] ${sender}: ${message}\n`;
+                
+                // --- INÍCIO DA LIMPEZA (Verdana) ---
+                // Remove scripts e styles que podem estar no corpo da mensagem
+                clone.querySelectorAll('script, style').forEach(el => el.remove());
+                let message = clone.textContent.trim();
+                // Limpa lixo de script residual (se houver)
+                message = message.replace(/\/\/\<!\[CDATA\[[\s\S]*?\/\/\]\]\>/g, '');
+                // --- FIM DA LIMPEZA ---
+
+                // MUDANÇA: Adiciona ao array
+                messagesArray.push({
+                    time: time,
+                    author: sender,
+                    content: message
+                });
             }
         });
-        chatText += "Fim da Conversa.\n";
-        return chatText;
+        return messagesArray; // Retorna o array
     },
+    // === FIM DA MODIFICAÇÃO ===
 
     extractTicketDataFromPopup: function() {
         // Tenta encontrar o ID no link dentro do modal (VerdanaDesk)
@@ -915,12 +934,16 @@ const VerdanaDeskHandler = {
         if (ticketDescEl) {
             const clone = ticketDescEl.cloneNode(true);
             clone.querySelectorAll('br').forEach(br => br.replaceWith('\n'));
+            
+            // --- INÍCIO DA LIMPEZA (Verdana) ---
+            clone.querySelectorAll('script, style').forEach(el => el.remove());
             descriptionText = clone.textContent.trim();
+            // --- FIM DA LIMPEZA ---
         }
         
         const fullData = `Título do Chamado: ${ticketTitle}\n` +
                `Grupo de Atendimento: ${ticketGroup}\n` +
-               `Descrição Inicial (do popup): ${descriptionText}`;
+               `Descrição Inicial: ${descriptionText}`; // Removida (do popup) para bater com o TOON
                
         return {
             id: ticketId,
@@ -997,9 +1020,6 @@ const GlpiHandler = {
             
             console.log('[Gerador de Resumo] Clique no "Solução" (GLPI) detetado. A abrir modal.');
 
-            const ticketInfo = GlpiHandler.extractTicketData();
-            const chatLog = GlpiHandler.extractChatLog();
-            
             // O retorno de createModalUI não precisa mais de setCopyBlockListeners
             const { modalContainer, view1, view2, viewSecurity, viewCopyConfirm, reportTextarea } = createModalUI();
             
@@ -1099,23 +1119,24 @@ const GlpiHandler = {
                     currentObsTextarea.style.color = '#000';
                     setCopyBlockListeners(false);
 
+                    // === INÍCIO DA MODIFICAÇÃO TOON ===
+                    const ticketInfo = GlpiHandler.extractTicketData();
+                    const chatLogArray = GlpiHandler.extractChatLog(); // Agora retorna Array
                     const observations = currentObsTextarea.value;
+
+                    // Converte para TOON
+                    const toonPayload = convertToTOON(ticketInfo, chatLogArray, observations);
                     
-                    let fullConversation = "--- Informações do Ticket ---\n" + ticketInfo.fullData +
-                                        "\n\n--- Histórico da Conversa ---\n" + chatLog;
-
-                    if (observations.trim() !== '') {
-                        fullConversation += `\n\n--- Observações Adicionais do Técnico ---\n${observations}`;
-                    }
-
-                    // Salva o contexto no modal
-                    modalContainer.conversationContext = fullConversation;
+                    // Salva o contexto (TOON) no modal
+                    modalContainer.conversationContext = toonPayload;
                     // Salva o ID
                     modalContainer.ticketId = ticketInfo.id;
+                    // === FIM DA MODIFICAÇÃO TOON ===
                     
                     try {
                         chrome.runtime.sendMessage(
-                            { command: 'summarizeConversation', conversation: fullConversation },
+                            // Envia o payload TOON
+                            { command: 'summarizeConversation', conversation: toonPayload },
                             (response) => {
                                 try {
                                     currentConfirmNo.classList.remove('loading');
@@ -1133,6 +1154,7 @@ const GlpiHandler = {
                                         
                                         // INJETA SÓ O RESUMO
                                         currentReportTextarea.value = response.summary;
+                                        // Adiciona observações ao final do resumo (se houver)
                                         if (observations.trim() !== '') {
                                             currentReportTextarea.value += `\n\nObservações Adicionais:\n${observations}`;
                                         }
@@ -1191,18 +1213,22 @@ const GlpiHandler = {
                     currentObsTextarea.style.color = '#000';
                     setCopyBlockListeners(false);
 
+                    // === INÍCIO DA MODIFICAÇÃO TOON ===
+                    const ticketInfo = GlpiHandler.extractTicketData();
+                    const chatLogArray = GlpiHandler.extractChatLog(); // Agora retorna Array
                     const observations = currentObsTextarea.value;
-                    
-                    let fullConversation = "--- Informações do Ticket ---\n" + ticketInfo.fullData +
-                                        "\n\n--- Histórico da Conversa ---\n" + chatLog;
 
-                    if (observations.trim() !== '') {
-                        fullConversation += `\n\n--- Observações Adicionais do Técnico ---\n${observations}`;
-                    }
+                    // Converte para TOON
+                    const toonPayload = convertToTOON(ticketInfo, chatLogArray, observations);
+                    
+                    // Salva o ID (será usado no passo 2)
+                    modalContainer.ticketId = ticketInfo.id;
+                    // === FIM DA MODIFICAÇÃO TOON ===
                     
                     try {
                         chrome.runtime.sendMessage(
-                            { command: 'anonymizeConversation', conversation: fullConversation }, 
+                            // Envia o TOON para anonimizar
+                            { command: 'anonymizeConversation', conversation: toonPayload }, 
                             (response) => {
                                 try {
                                     if (chrome.runtime.lastError || (response && response.error)) {
@@ -1216,10 +1242,9 @@ const GlpiHandler = {
                                         
                                         // Salva o contexto ANONIMIZADO no modal
                                         modalContainer.conversationContext = response.anonymizedText;
-                                        // Salva o ID
-                                        modalContainer.ticketId = ticketInfo.id;
                                         
                                         chrome.runtime.sendMessage(
+                                            // Envia o TOON anonimizado para resumir
                                             { command: 'summarizeConversation', conversation: response.anonymizedText },
                                             (summaryResponse) => {
                                                 try {
@@ -1238,6 +1263,7 @@ const GlpiHandler = {
                                                         
                                                         // INJETA SÓ O RESUMO
                                                         currentReportTextarea.value = summaryResponse.summary;
+                                                        // Adiciona observações ao final do resumo (se houver)
                                                         if (observations.trim() !== '') {
                                                             currentReportTextarea.value += `\n\nObservações Adicionais:\n${observations}`;
                                                         }
@@ -1257,7 +1283,7 @@ const GlpiHandler = {
                                                     currentConfirmNo.disabled = false;
                                                     currentViewSecurity.style.display = 'none';
                                                     currentView1.style.display = 'flex';
-                                                    currentObsTextarea.value = `Erro (2/2): ${e.message}. Verifique as Opções.`;
+                                                    currentObsTextarea.value = `Erro (2/2): ${e.message}. Verifique as Opções da extensão.`;
                                                     currentObsTextarea.style.color = 'red';
                                                 }
                                             }
@@ -1273,7 +1299,8 @@ const GlpiHandler = {
                                     currentConfirmNo.disabled = false;
                                     currentViewSecurity.style.display = 'none';
                                     currentView1.style.display = 'flex';
-                                    currentObsTextarea.value = `Erro (1/2): ${e.message}. Verifique o Ollama/Opções.`;
+                                    // === CORREÇÃO DA MENSAGEM DE ERRO ===
+                                    currentObsTextarea.value = `Erro (1/2): ${e.message}. Verifique as Opções da extensão.`;
                                     currentObsTextarea.style.color = 'red';
                                 }
                             }
@@ -1337,14 +1364,15 @@ const GlpiHandler = {
         }
     },
 
+    // === INÍCIO DA MODIFICAÇÃO (GLPI) ===
     extractChatLog: function() {
         const timeline = document.querySelector('.itil-timeline');
         if (!timeline) {
             console.warn('[ContentScript GLPI] Container da timeline (.itil-timeline) não encontrado.');
-            return "Histórico da conversa não encontrado.";
+            return []; // Retorna array vazio
         }
 
-        let chatText = "Início da Conversa (ordem cronológica):\n";
+        let chatArray = []; // <--- MUDANÇA: Array em vez de string
         let descriptionAdded = false;
         // Inverte a ordem para começar do mais antigo para o mais recente na extração
         const items = Array.from(timeline.querySelectorAll(':scope > .timeline-item')).reverse();
@@ -1368,17 +1396,19 @@ const GlpiHandler = {
             const contentElement = item.querySelector('.card-body .rich_text_container, .card-body .content');
 
             if (headerElement && contentElement) {
-                let headerText = headerElement.textContent.replace(/\s+/g, ' ').trim();
-                const cloneContent = contentElement.cloneNode(true);
-                cloneContent.querySelectorAll('br').forEach(br => br.replaceWith('\n'));
-                cloneContent.querySelectorAll('button, a.btn').forEach(btn => btn.remove());
-                let content = cloneContent.textContent.replace(/\s+/g, ' ').trim();
                 
-                if (!content && cloneContent.innerHTML.includes('<img')) {
-                    content = '[Imagem anexada]';
-                }
+                // --- INÍCIO DA LIMPEZA (GLPI) ---
 
-                // Tenta extrair autor e hora
+                // 1. Limpa o Cabeçalho (Autor/Hora)
+                let headerHTML = headerElement.innerHTML;
+                // Remove todo o lixo de script CDATA e qtip
+                headerHTML = headerHTML.replace(/\/\/\<!\[CDATA\[[\s\S]*?\/\/\]\]\>/g, '');
+                const tempHeader = document.createElement('div');
+                tempHeader.innerHTML = headerHTML;
+                
+                // Agora extrai o texto limpo
+                let headerText = tempHeader.textContent.replace(/\s+/g, ' ').trim();
+                
                 const match = headerText.match(/(?:Criado em:|Por)\s*(.*?)\s*(?:em|at)\s*(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}|Ontem|Hoje)/i);
                 let author = headerText; 
                 let time = '';
@@ -1390,31 +1420,76 @@ const GlpiHandler = {
                      if (simpleMatch && simpleMatch.length >= 3) {
                          author = simpleMatch[1].trim();
                          time = simpleMatch[2].trim();
+                     } else {
+                         // Fallback final: Pega o nome antes de qualquer lixo
+                         author = (headerText.split(' por ')[1] || headerText.split(' em ')[0] || headerText).trim();
+                         author = author.split(' //')[0].split(' Editar')[0];
                      }
                 }
+                // Limpa o nome (remove o ID duplicado que o GLPI às vezes adiciona)
+                author = author.replace(/[A-Z]{2}\s*$/, '').trim(); // Remove "JD" ou "CÁ" do final do nome
+
+                // 2. Limpa o Conteúdo (Mensagem)
+                const cloneContent = contentElement.cloneNode(true);
+                // Remove scripts, botões, e galerias de imagem
+                cloneContent.querySelectorAll('script, style, button, a.btn, .pswp-gallery').forEach(el => el.remove());
+                
+                let content = cloneContent.textContent;
+                
+                // Limpa lixo de script residual (CDATA, jQuery, etc.)
+                content = content.replace(/\/\/\<!\[CDATA\[[\s\S]*?\/\/\]\]\>/g, '');
+                content = content.replace(/jQuery\([\s\S]*?\);/g, '');
+                content = content.replace(/read_more\(\);/g, '');
+                content = content.replace(/\s+/g, ' ').trim();
+
+                if (!content && contentElement.innerHTML.includes('<img')) {
+                    content = '[Imagem anexada]';
+                }
+                // --- FIM DA LIMPEZA (GLPI) ---
+
 
                 if (isDescription && !descriptionAdded) {
-                    chatText += `Descrição Inicial (${time} por ${author}):\n${content}\n---\n`;
+                    // chatText += `Descrição Inicial (${time} por ${author}):\n${content}\n---\n`;
+                    chatArray.push({
+                        time: time || '00:00',
+                        author: author.replace('|', '-'),
+                        content: content
+                    });
                     descriptionAdded = true;
                 } else if (isFollowup) {
-                    chatText += `[${time || 'Tempo não encontrado'}] ${author}:\n${content}\n---\n`;
+                    // chatText += `[${time || 'Tempo não encontrado'}] ${author}:\n${content}\n---\n`;
+                    chatArray.push({
+                        time: time || '00:00',
+                        author: author.replace('|', '-'),
+                        content: content
+                    });
                 }
             }
         });
 
-        if (items.length === 0 || chatText === "Início da Conversa (ordem cronológica):\n") {
+        if (items.length === 0 || chatArray.length === 0) {
              console.warn('[ContentScript GLPI] Nenhum item de descrição ou acompanhamento encontrado na timeline.');
-             chatText = "Nenhuma descrição ou acompanhamento encontrado.\n";
-        } else if (!descriptionAdded) {
-            // Tenta pegar a descrição inicial de outro lugar, se o item ITILContent não for encontrado/processado
+        } 
+        
+        // Limpa a descrição fallback também
+        if (!descriptionAdded) {
             const initialDescription = GlpiHandler.getTextSafe('#tab_principale .card-text .content, #tab_Item_Ticket_1 .card-text .content');
-            chatText = chatText.replace("Início da Conversa (ordem cronológica):\n", 
-                       `Início da Conversa (ordem cronológica):\nDescrição Inicial: ${initialDescription || '[Não encontrada]'}\n---\n`);
+            
+            let cleanedFallbackDesc = initialDescription.replace(/\/\/\<!\[CDATA\[[\s\S]*?\/\/\]\]\>/g, '');
+            cleanedFallbackDesc = cleanedFallbackDesc.replace(/jQuery\([\s\S]*?\);/g, '');
+            cleanedFallbackDesc = cleanedFallbackDesc.replace(/\s+/g, ' ').trim();
+
+             chatArray.unshift({ // Adiciona ao início do array
+                 time: '00:00',
+                 author: 'Descrição',
+                 content: cleanedFallbackDesc || '[Não encontrada]'
+             });
         }
 
-        chatText += "Fim da Conversa.\n";
-        return chatText;
+        // chatText += "Fim da Conversa.\n";
+        return chatArray; // Retorna a lista pura
     },
+    // === FIM DA MODIFICAÇÃO ===
 
     extractTicketData: function() {
         const headerTitleElement = document.querySelector('h3.navigationheader-title');
@@ -1454,8 +1529,13 @@ const GlpiHandler = {
         let initialDescription = '[Descrição não encontrada]';
          if (initialDescriptionElement) {
             const clone = initialDescriptionElement.cloneNode(true);
-            clone.querySelectorAll('br').forEach(br => br.replaceWith('\n'));
-            initialDescription = clone.textContent.replace(/\s+/g, ' ').trim();
+            // --- INÍCIO DA LIMPEZA (GLPI) ---
+            clone.querySelectorAll('script, style, button, a.btn, .pswp-gallery').forEach(el => el.remove());
+            let text = clone.textContent;
+            text = text.replace(/\/\/\<!\[CDATA\[[\s\S]*?\/\/\]\]\>/g, ''); // Remove CDATA
+            text = text.replace(/jQuery\([\s\S]*?\);/g, ''); // Remove jQuery calls
+            // --- FIM DA LIMPEZA ---
+            initialDescription = text.replace(/\s+/g, ' ').trim();
         }
         
         const fullData = `Título do Chamado: ${ticketTitle} (${ticketId})\n` +
@@ -1618,3 +1698,52 @@ chrome.storage.sync.get(['extensionEnabled'], (result) => {
     isExtensionEnabled = !!result.extensionEnabled;
     setupObserver(isExtensionEnabled);
 });
+
+
+// +++ INÍCIO: NOVA FUNÇÃO CONVERSORA TOON +++
+/**
+ * Converte os dados do ticket e o array do chat para o formato TOON.
+ * @param {object} ticketData - Objeto de extractTicketData (id, fullData)
+ * @param {Array} chatArray - Array de objetos de extractChatLog (time, author, content)
+ * @param {string} observations - Texto do campo de observações
+ * @returns {string} - String formatada em TOON
+ */
+function convertToTOON(ticketData, chatArray, observations) {
+    // Seção do Ticket (formato chave: valor)
+    let output = "TICKET:\n";
+    output += `id: ${ticketData.id.replace('|', '-')}\n`;
+    output += `titulo: ${(ticketData.fullData.match(/Título do Chamado: (.*)/)?.[1] || 'N/A').replace('|', '-').replace(/\n/g, ' ')}\n`;
+    output += `grupo: ${ticketData.fullData.match(/Grupo de Atendimento: (.*)/)?.[1] || 'N/A'}\n`;
+    
+    // --- INÍCIO DA LIMPEZA (TOON) ---
+    // Limpa a descrição que vem do ticketData
+    const cleanDesc = (ticketData.fullData.match(/Descrição Inicial: ([\s\S]*)/)?.[1] || '[Não encontrada]')
+                        .replace(/\|/g, '-') // remove pipes
+                        .replace(/\n/g, ' ') // remove quebras de linha
+                        .trim();
+    output += `descricao: ${cleanDesc}\n`;
+    // --- FIM DA LIMPEZA ---
+
+    // Seção do Chat (formato TABULAR - aqui está a grande economia)
+    // Sintaxe: nome_da_lista[quantidade]{colunas}:
+    output += `\nCHAT[${chatArray.length}]{hora|autor|msg}:\n`;
+    
+    chatArray.forEach(msg => {
+        // Limpeza extra: remove pipes (|) e quebras de linha da mensagem, autor e hora
+        const cleanTime = msg.time.replace(/\|/g, '-').replace(/\n/g, ' ').trim();
+        const cleanAuthor = msg.author.replace('|', '-').replace(/\n/g, ' ').trim();
+        const cleanMsg = msg.content.replace(/\|/g, '-').replace(/\n/g, ' ').trim();
+        
+        // Usa PIPE como separador
+        output += `${cleanTime}|${cleanAuthor}|${cleanMsg}\n`;
+    });
+
+    // Adiciona observações se existirem
+    if (observations && observations.trim() !== '') {
+        output += `\nOBSERVACOES:\n`;
+        output += observations.replace(/\|/g, '-'); // Limpa pipes das observações
+    }
+
+    return output;
+}
+// +++ FIM: NOVA FUNÇÃO CONVERSORA TOON +++
